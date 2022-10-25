@@ -34,7 +34,7 @@ func init() {
 func mainExecute(cmd *cobra.Command, _ []string) error {
 	fmt.Printf("Hello world, this is 'feed'!\n")
 
-	sample.Doit()
+	sample.Doit(endpoints, jwt, username, password)
 
 	//feedlang.Init()
 	theProggy := []string{
@@ -53,12 +53,12 @@ func mainExecute(cmd *cobra.Command, _ []string) error {
 	prog, err := feedlang.Parse(theProggy)
 	if err != nil {
 		fmt.Printf("Error in parse: %v\n", err)
-		os.Exit(17)
+		os.Exit(1)
 	}
 	err = prog.Execute()
 	if err != nil {
 		fmt.Printf("Error in execution: %v\n", err)
-		os.Exit(18)
+		os.Exit(2)
 	}
 	return nil
 }

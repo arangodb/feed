@@ -72,4 +72,3 @@ func CreateOrGetDatabaseCollection(ctx context.Context, client driver.Client, DB
 
 	return nil, err
 }
-

@@ -1,57 +1,57 @@
 package feedlang
 
 import (
-	"strconv"
 	"fmt"
-  "sync"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Program interface {
-  Execute() error
+	Execute() error
 }
 
-type Maker func(args []string) (Program, error) 
+type Maker func(args []string) (Program, error)
 
 var Atoms map[string]Maker
 
 type Sequential struct {
-  Steps []Program
+	Steps []Program
 }
 
 type Parallel struct {
-  Steps []Program
+	Steps []Program
 }
 
 func (s *Sequential) Execute() error {
-  for _, step := range s.Steps {
-    err := step.Execute()
-    if err != nil {
-      return err
-    }
-  }
-  return nil
+	for _, step := range s.Steps {
+		err := step.Execute()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Parallel) Execute() error {
-  nr := len(s.Steps)
-  errs := make([]error, nr, nr)
-  wg := sync.WaitGroup{};
-  for i, step := range s.Steps {
-    wg.Add(1)
-    go func(wg *sync.WaitGroup, i int, p Program) {
-      defer wg.Done()
-      errs[i] = p.Execute()
-    }(&wg, i, step)
-  }
-  wg.Wait()
-  for i := 0; i < nr; i += 1 {
-    if errs[i] != nil {
-      return errs[i]
-    }
-  }
-  return nil
+	nr := len(s.Steps)
+	errs := make([]error, nr, nr)
+	wg := sync.WaitGroup{}
+	for i, step := range s.Steps {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup, i int, p Program) {
+			defer wg.Done()
+			errs[i] = p.Execute()
+		}(&wg, i, step)
+	}
+	wg.Wait()
+	for i := 0; i < nr; i += 1 {
+		if errs[i] != nil {
+			return errs[i]
+		}
+	}
+	return nil
 }
 
 type DummyProg struct {
@@ -66,18 +66,18 @@ func (dp *DummyProg) Execute() error {
 }
 
 func DummyMaker(args []string) (Program, error) {
-  if len(args) == 0 {
+	if len(args) == 0 {
 		return nil, fmt.Errorf("Expecting one integer argument!")
 	}
 	i, err := strconv.ParseInt(args[0], 10, 0)
 	if err != nil {
 		return nil, fmt.Errorf("Could not parse integer %s: %v\n", args[0], err)
-  } 
-	return &DummyProg{i:int(i)}, nil
+	}
+	return &DummyProg{i: int(i)}, nil
 }
 
 func init() {
-  Atoms = make(map[string]Maker, 1)
+	Atoms = make(map[string]Maker, 1)
 	Atoms["dummy"] = DummyMaker
 }
 
@@ -100,9 +100,9 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 	line, err := getLine(lines, pos)
 	if err != nil {
 		return nil, err
-  }
-  if line == "{" {
-    // Open new parallel subprogram
+	}
+	if line == "{" {
+		// Open new parallel subprogram
 		*pos += 1
 		var par Parallel
 		par.Steps = make([]Program, 0, 16)
@@ -117,12 +117,12 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 			prog, err := parserRecursion(lines, pos, depth+1)
 			if err != nil {
 				return nil, err
-		  }
+			}
 			par.Steps = append(par.Steps, prog)
 		}
-		*pos += 1   // consume ]
+		*pos += 1 // consume ]
 		return &par, nil
-  } else if line == "[" {
+	} else if line == "[" {
 		// Open new sequential subprogram
 		*pos += 1
 		var seq Sequential
@@ -138,16 +138,16 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 			prog, err := parserRecursion(lines, pos, depth+1)
 			if err != nil {
 				return nil, err
-		  }
+			}
 			seq.Steps = append(seq.Steps, prog)
 		}
-		*pos += 1   // consume ]
+		*pos += 1 // consume ]
 		return &seq, nil
 	} else if line == "}" {
 		return nil, fmt.Errorf("Unexpected '}' in line %d of input in depth %d", *pos+1, depth)
-  } else if line == "]" {
+	} else if line == "]" {
 		return nil, fmt.Errorf("Unexpected ']' in line %d of input in depth %d", *pos+1, depth)
-  }
+	}
 	args := strings.Split(lines[*pos], " ")
 	if len(args) == 0 {
 		return nil, fmt.Errorf("Unexpected empty line in line %d of input in depth %d", *pos+1, depth)
@@ -164,7 +164,7 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 	}
 	*pos += 1
 	return prog, nil
-} 
+}
 
 func Parse(lines []string) (Program, error) {
 	var pos int = 0

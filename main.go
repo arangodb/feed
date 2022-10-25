@@ -7,10 +7,32 @@ import (
 
 	"github.com/neunhoef/feed/pkg/feedlang"
 	"github.com/neunhoef/feed/pkg/sample"
+	"github.com/spf13/cobra"
 )
 
-func main() {
-	fmt.Printf("Hello world!\n")
+var (
+	cmd = &cobra.Command{
+		Short: "The 'feed' tool feeds ArangoDB with generated data, quickly.",
+		RunE:  mainExecute,
+	}
+	endpoints []string
+	verbose   bool
+	jwt       string
+	username  string
+	password  string
+)
+
+func init() {
+	flags := cmd.PersistentFlags()
+	flags.StringSliceVar(&endpoints, "endpoint", []string{"http://localhost:8529"}, "Endpoint of server where data should be written.")
+	flags.BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+	flags.StringVar(&jwt, "jwt", "", "Verbose output")
+	flags.StringVar(&username, "username", "root", "User name for database access.")
+	flags.StringVar(&password, "password", "", "Password for database access.")
+}
+
+func mainExecute(cmd *cobra.Command, _ []string) error {
+	fmt.Printf("Hello world, this is 'feed'!\n")
 
 	sample.Doit()
 
@@ -38,4 +60,9 @@ func main() {
 		fmt.Printf("Error in execution: %v\n", err)
 		os.Exit(18)
 	}
+	return nil
+}
+
+func main() {
+	cmd.Execute()
 }

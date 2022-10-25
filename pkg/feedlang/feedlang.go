@@ -76,7 +76,7 @@ func DummyMaker(args []string) (Program, error) {
 	return &DummyProg{i:int(i)}, nil
 }
 
-func Init() {
+func init() {
   Atoms = make(map[string]Maker, 1)
 	Atoms["dummy"] = DummyMaker
 }

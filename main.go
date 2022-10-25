@@ -14,7 +14,7 @@ func main() {
 
 	sample.Doit()
 
-	feedlang.Init()
+	//feedlang.Init()
 	theProggy := []string{
 		"[",
 		"{",

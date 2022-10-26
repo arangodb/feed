@@ -5,9 +5,10 @@ import (
 
 	"bufio"
 	"os"
-	"sync"
 
+	"github.com/neunhoef/feed/pkg/config"
 	"github.com/neunhoef/feed/pkg/feedlang"
+	"github.com/neunhoef/feed/pkg/operations"
 	"github.com/spf13/cobra"
 )
 
@@ -16,29 +17,23 @@ var (
 		Short: "The 'feed' tool feeds ArangoDB with generated data, quickly.",
 		RunE:  mainExecute,
 	}
-	Endpoints   []string
-	Verbose     bool
-	Jwt         string
-	Username    string
-	Password    string
-	ProgName    string
-	OutputMutex sync.Mutex
+	ProgName string
 )
 
 func init() {
 	flags := cmd.PersistentFlags()
-	flags.StringSliceVar(&Endpoints, "endpoint", []string{"http://localhost:8529"}, "Endpoint of server where data should be written.")
-	flags.BoolVarP(&Verbose, "verbose", "v", false, "Verbose output")
-	flags.StringVar(&Jwt, "jwt", "", "Verbose output")
-	flags.StringVar(&Username, "username", "root", "User name for database access.")
-	flags.StringVar(&Password, "password", "", "Password for database access.")
+	flags.StringSliceVar(&config.Endpoints, "endpoints", []string{"http://localhost:8529"}, "Endpoint of server where data should be written.")
+	flags.BoolVarP(&config.Verbose, "verbose", "v", false, "Verbose output")
+	flags.StringVar(&config.Jwt, "jwt", "", "Verbose output")
+	flags.StringVar(&config.Username, "username", "root", "User name for database access.")
+	flags.StringVar(&config.Password, "password", "", "Password for database access.")
 	flags.StringVar(&ProgName, "execute", "prog.feed", "Filename of program to execute.")
 }
 
 func mainExecute(cmd *cobra.Command, _ []string) error {
 	fmt.Printf("Hello world, this is 'feed'!\n")
 
-	// sample.Doit(Endpoints, Jwt, Username, Password)
+	// sample.Doit(config.Endpoints, Jwt, Username, Password)
 
 	inputLines := make([]string, 0, 100)
 	file, err := os.Open(ProgName)
@@ -57,6 +52,8 @@ func mainExecute(cmd *cobra.Command, _ []string) error {
 		fmt.Printf("Could not read file %s to execute program.\n", ProgName)
 		os.Exit(2)
 	}
+
+	operations.Init() // set up operations for the parser
 
 	prog, err := feedlang.Parse(inputLines)
 	if err != nil {

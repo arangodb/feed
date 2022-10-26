@@ -2,9 +2,10 @@ package operations
 
 import (
 	"github.com/arangodb/go-driver"
-	main "github.com/neunhoef/feed"
 	"github.com/neunhoef/feed/pkg/client"
+	"github.com/neunhoef/feed/pkg/config"
 	"github.com/neunhoef/feed/pkg/database"
+	"github.com/neunhoef/feed/pkg/feedlang"
 
 	"fmt"
 	"strconv"
@@ -44,7 +45,7 @@ func CheckInt64Parameter(value *int64, name string, input string) error {
 	return nil
 }
 
-func NewNormalProg(args []string) (*NormalProg, error) {
+func NewNormalProg(args []string) (feedlang.Program, error) {
 	// This function parses the command line args and fills the values in
 	// the struct.
 	// Defaults:
@@ -69,7 +70,7 @@ func NewNormalProg(args []string) (*NormalProg, error) {
 		pair := strings.Split(s, "=")
 		if len(pair) == 1 {
 			if i == 0 {
-				np.SubCommand = strings.Trim(pair[0], " ")
+				np.SubCommand = strings.TrimSpace(pair[0])
 				if np.SubCommand != "create" &&
 					np.SubCommand != "insert" {
 					return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
@@ -78,56 +79,63 @@ func NewNormalProg(args []string) (*NormalProg, error) {
 				return nil, fmt.Errorf("Found argument without = sign: %s", pair[0])
 			}
 		} else if len(pair) == 2 {
-			switch strings.Trim(pair[0], " ") {
+			switch strings.TrimSpace(pair[0]) {
 			case "database":
-				np.Database = strings.Trim(pair[1], " ")
+				np.Database = strings.TrimSpace(pair[1])
 			case "collection":
-				np.Collection = strings.Trim(pair[1], " ")
+				np.Collection = strings.TrimSpace(pair[1])
 			case "numberOfShards":
-				e := CheckInt64Parameter(&np.NumberOfShards, "numberOfShards", s)
+				e := CheckInt64Parameter(&np.NumberOfShards, "numberOfShards",
+					strings.TrimSpace(pair[1]))
 				if e != nil {
 					return nil, e
 				}
 			case "replicationFactor":
-				e := CheckInt64Parameter(&np.ReplicationFactor, "replicationFactor", s)
+				e := CheckInt64Parameter(&np.ReplicationFactor, "replicationFactor",
+					strings.TrimSpace(pair[1]))
 				if e != nil {
 					return nil, e
 				}
 			case "parallelism":
-				e := CheckInt64Parameter(&np.Parallelism, "parallelism", s)
+				e := CheckInt64Parameter(&np.Parallelism, "parallelism",
+					strings.TrimSpace(pair[1]))
 				if e != nil {
 					return nil, e
 				}
 			case "startDelay":
-				e := CheckInt64Parameter(&np.StartDelay, "startDelay", s)
+				e := CheckInt64Parameter(&np.StartDelay, "startDelay",
+					strings.TrimSpace(pair[1]))
 				if e != nil {
 					return nil, e
 				}
 			case "batchSize":
-				e := CheckInt64Parameter(&np.BatchSize, "batchSize", s)
+				e := CheckInt64Parameter(&np.BatchSize, "batchSize",
+					strings.TrimSpace(pair[1]))
 				if e != nil {
 					return nil, e
 				}
 			case "keySize":
-				e := CheckInt64Parameter(&np.KeySize, "keySize", s)
+				e := CheckInt64Parameter(&np.KeySize, "keySize",
+					strings.TrimSpace(pair[1]))
 				if e != nil {
 					return nil, e
 				}
 			case "numberFields":
-				e := CheckInt64Parameter(&np.NumberFields, "numberFields", s)
+				e := CheckInt64Parameter(&np.NumberFields, "numberFields",
+					strings.TrimSpace(pair[1]))
 				if e != nil {
 					return nil, e
 				}
 			case "drop":
-				x := strings.Trim(pair[1], " ")
+				x := strings.TrimSpace(pair[1])
 				np.Drop = x == "true" || x == "TRUE" || x == "True" ||
 					x == "1" || x == "yes" || x == "Yes" || x == "YES"
 			case "withGeo":
-				x := strings.Trim(pair[1], " ")
+				x := strings.TrimSpace(pair[1])
 				np.WithGeo = x == "true" || x == "TRUE" || x == "True" ||
 					x == "1" || x == "yes" || x == "Yes" || x == "YES"
 			case "withWords":
-				x := strings.Trim(pair[1], " ")
+				x := strings.TrimSpace(pair[1])
 				np.WithWords = x == "true" || x == "TRUE" || x == "True" ||
 					x == "1" || x == "yes" || x == "Yes" || x == "YES"
 				// All other cases are ignored intentionally!
@@ -143,13 +151,13 @@ func (np *NormalProg) Execute() error {
 	// This actually executes the NormalProg:
 	var cl driver.Client
 	var err error
-	if main.Jwt != "" {
-		cl, err = client.NewClient(main.Endpoints, driver.RawAuthentication(main.Jwt))
+	if config.Jwt != "" {
+		cl, err = client.NewClient(config.Endpoints, driver.RawAuthentication(config.Jwt))
 	} else {
-		cl, err = client.NewClient(main.Endpoints, driver.BasicAuthentication(main.Username, main.Password))
+		cl, err = client.NewClient(config.Endpoints, driver.BasicAuthentication(config.Username, config.Password))
 	}
 	if err != nil {
-		return fmt.Errorf("Could not connect to database at %v: %v\n", main.Endpoints, err)
+		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
 	}
 	switch np.SubCommand {
 	case "create":
@@ -179,7 +187,6 @@ func (np *NormalProg) Execute() error {
 		})
 		if err != nil {
 			return fmt.Errorf("Error: could not create collection %s: %v", np.Collection, err)
-			return err
 		}
 		fmt.Printf("normal: Database %s and collection %s successfully created.\n", np.Database, np.Collection)
 	case "insert":

@@ -15,26 +15,26 @@ var (
 		Short: "The 'feed' tool feeds ArangoDB with generated data, quickly.",
 		RunE:  mainExecute,
 	}
-	endpoints []string
-	verbose   bool
-	jwt       string
-	username  string
-	password  string
+	Endpoints []string
+	Verbose   bool
+	Jwt       string
+	Username  string
+	Password  string
 )
 
 func init() {
 	flags := cmd.PersistentFlags()
-	flags.StringSliceVar(&endpoints, "endpoint", []string{"http://localhost:8529"}, "Endpoint of server where data should be written.")
-	flags.BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
-	flags.StringVar(&jwt, "jwt", "", "Verbose output")
-	flags.StringVar(&username, "username", "root", "User name for database access.")
-	flags.StringVar(&password, "password", "", "Password for database access.")
+	flags.StringSliceVar(&Endpoints, "endpoint", []string{"http://localhost:8529"}, "Endpoint of server where data should be written.")
+	flags.BoolVarP(&Verbose, "verbose", "v", false, "Verbose output")
+	flags.StringVar(&Jwt, "jwt", "", "Verbose output")
+	flags.StringVar(&Username, "username", "root", "User name for database access.")
+	flags.StringVar(&Password, "password", "", "Password for database access.")
 }
 
 func mainExecute(cmd *cobra.Command, _ []string) error {
 	fmt.Printf("Hello world, this is 'feed'!\n")
 
-	sample.Doit(endpoints, jwt, username, password)
+	sample.Doit(Endpoints, Jwt, Username, Password)
 
 	//feedlang.Init()
 	theProggy := []string{

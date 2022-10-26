@@ -1,10 +1,10 @@
 package operations
 
 import (
-	"github.com/neunhoef/feed/pkg/client"
-	"github.com/neunhoef/feed/pkg/database"
 	"github.com/arangodb/go-driver"
 	main "github.com/neunhoef/feed"
+	"github.com/neunhoef/feed/pkg/client"
+	"github.com/neunhoef/feed/pkg/database"
 
 	"fmt"
 	"strconv"
@@ -13,28 +13,29 @@ import (
 
 type NormalProg struct {
 	// General parameters:
-  Database string
+	Database   string
 	Collection string
 	SubCommand string
 
 	// Parameters for creation:
-	NumberOfShards int64
+	NumberOfShards    int64
 	ReplicationFactor int64
+	Drop              bool
 
 	// Parameters for batch import:
-	SizePerDoc int64
-	Size int64
-  Parallelism int64
-	StartDelay int64
-	BatchSize int64
-	WithGeo bool
-	WithWords bool
-	KeySize int64
+	SizePerDoc   int64
+	Size         int64
+	Parallelism  int64
+	StartDelay   int64
+	BatchSize    int64
+	WithGeo      bool
+	WithWords    bool
+	KeySize      int64
 	NumberFields int64
 }
 
 func CheckInt64Parameter(value *int64, name string, input string) error {
-	i, e := strconv.ParseInt(input, 10, 64);
+	i, e := strconv.ParseInt(input, 10, 64)
 	if e != nil {
 		fmt.Printf("Could not parse %s argument to number: %s, error: %v\n", name, input, e)
 		return e
@@ -48,37 +49,38 @@ func NewNormalProg(args []string) (*NormalProg, error) {
 	// the struct.
 	// Defaults:
 	var np *NormalProg = &NormalProg{
-    Database: "_system",
-		Collection: "batchimport",
-		SubCommand: "create",
-		NumberOfShards: 3,
+		Database:          "_system",
+		Collection:        "batchimport",
+		Drop:              false,
+		SubCommand:        "create",
+		NumberOfShards:    3,
 		ReplicationFactor: 3,
-		SizePerDoc: 128,
-		Size: 16 * 1024 * 1024 * 1024,
-		Parallelism: 16,
-		StartDelay: 5,
-		BatchSize: 1000,
-		WithGeo: false,
-		WithWords: false,
-		KeySize: 32,
-		NumberFields: 3,
+		SizePerDoc:        128,
+		Size:              16 * 1024 * 1024 * 1024,
+		Parallelism:       16,
+		StartDelay:        5,
+		BatchSize:         1000,
+		WithGeo:           false,
+		WithWords:         false,
+		KeySize:           32,
+		NumberFields:      3,
 	}
-  for i, s := range(args) {
+	for i, s := range args {
 		pair := strings.Split(s, "=")
 		if len(pair) == 1 {
 			if i == 0 {
 				np.SubCommand = strings.Trim(pair[0], " ")
 				if np.SubCommand != "create" &&
-				   np.SubCommand != "insert" {
+					np.SubCommand != "insert" {
 					return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 				}
-		  } else {
+			} else {
 				return nil, fmt.Errorf("Found argument without = sign: %s", pair[0])
 			}
 		} else if len(pair) == 2 {
 			switch strings.Trim(pair[0], " ") {
 			case "database":
-        np.Database = strings.Trim(pair[1], " ")
+				np.Database = strings.Trim(pair[1], " ")
 			case "collection":
 				np.Collection = strings.Trim(pair[1], " ")
 			case "numberOfShards":
@@ -116,15 +118,19 @@ func NewNormalProg(args []string) (*NormalProg, error) {
 				if e != nil {
 					return nil, e
 				}
+			case "drop":
+				x := strings.Trim(pair[1], " ")
+				np.Drop = x == "true" || x == "TRUE" || x == "True" ||
+					x == "1" || x == "yes" || x == "Yes" || x == "YES"
 			case "withGeo":
 				x := strings.Trim(pair[1], " ")
 				np.WithGeo = x == "true" || x == "TRUE" || x == "True" ||
-				             x == "1" || x == "yes" || x == "Yes" || x == "YES"
+					x == "1" || x == "yes" || x == "Yes" || x == "YES"
 			case "withWords":
 				x := strings.Trim(pair[1], " ")
 				np.WithWords = x == "true" || x == "TRUE" || x == "True" ||
-				               x == "1" || x == "yes" || x == "Yes" || x == "YES"
-	    // All other cases are ignored intentionally!
+					x == "1" || x == "yes" || x == "Yes" || x == "YES"
+				// All other cases are ignored intentionally!
 			}
 		} else {
 			return nil, fmt.Errorf("Found argument with more than one = sign: %s", s)
@@ -134,13 +140,13 @@ func NewNormalProg(args []string) (*NormalProg, error) {
 }
 
 func (np *NormalProg) Execute() error {
-  // This actually executes the NormalProg:
+	// This actually executes the NormalProg:
 	var cl driver.Client
 	var err error
 	if main.Jwt != "" {
-	  cl, err = client.NewClient(main.Endpoints, driver.RawAuthentication(main.Jwt))
+		cl, err = client.NewClient(main.Endpoints, driver.RawAuthentication(main.Jwt))
 	} else {
-		cl, err = client.NewClient(main.Endpoints, driver.BasicAuthentication(main.Username , main.Password))
+		cl, err = client.NewClient(main.Endpoints, driver.BasicAuthentication(main.Username, main.Password))
 	}
 	if err != nil {
 		return fmt.Errorf("Could not connect to database at %v: %v\n", main.Endpoints, err)
@@ -152,15 +158,31 @@ func (np *NormalProg) Execute() error {
 		if err != nil {
 			return fmt.Errorf("Could not create/open database %s: %v\n", np.Database, err)
 		}
-		_, err = database.CreateOrGetCollection(nil, db, np.Collection,
-		&driver.CreateCollectionOptions{NumberOfShards: int(np.NumberOfShards),
-																		ReplicationFactor: int(np.ReplicationFactor)})
+		ec, err := db.Collection(nil, np.Collection)
+		if err == nil {
+			if !np.Drop {
+				return fmt.Errorf("Found collection %s already, setup is already done.", np.Collection)
+			}
+			err = ec.Remove(nil)
+			if err != nil {
+				return fmt.Errorf("Could not drop collection %s: %v\n", np.Collection, err)
+			}
+		} else if !driver.IsNotFound(err) {
+			return fmt.Errorf("Error: could not look for collection %s: %v\n", np.Collection, err)
+		}
+
+		// Now create the batchimport collection:
+		_, err = db.CreateCollection(nil, np.Collection, &driver.CreateCollectionOptions{
+			Type:              driver.CollectionTypeDocument,
+			NumberOfShards:    int(np.NumberOfShards),
+			ReplicationFactor: int(np.ReplicationFactor),
+		})
 		if err != nil {
-			return fmt.Errorf("Could not create/open collection %s: %v\n", np.Collection, err)
+			return fmt.Errorf("Error: could not create collection %s: %v", np.Collection, err)
+			return err
 		}
 		fmt.Printf("normal: Database %s and collection %s successfully created.\n", np.Database, np.Collection)
 	case "insert":
 	}
 	return nil
 }
-

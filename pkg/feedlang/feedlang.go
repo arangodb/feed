@@ -85,7 +85,7 @@ func getLine(lines []string, pos *int) (string, error) {
 	// Trim line and ignore empty and comment lines:
 	var line string
 	for *pos < len(lines) {
-		line = strings.Trim(lines[*pos], " \t\f\n\r")
+		line = strings.TrimSpace(lines[*pos])
 		if len(line) >= 0 && line[0] != '#' {
 			return line, nil
 		}
@@ -148,7 +148,7 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 	} else if line == "]" {
 		return nil, fmt.Errorf("Unexpected ']' in line %d of input in depth %d", *pos+1, depth)
 	}
-	args := strings.Split(lines[*pos], " ")
+	args := strings.Split(strings.TrimSpace(lines[*pos]), " ")
 	if len(args) == 0 {
 		return nil, fmt.Errorf("Unexpected empty line in line %d of input in depth %d", *pos+1, depth)
 	}

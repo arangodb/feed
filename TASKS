@@ -5,7 +5,7 @@ grabs the task and starts working on it.
  - Design read load use cases.
  - Honour the field `NumberFields` in data generation by distributing
    the current `Payload` field across multiple fields. Fixed total maximum
-   of say 16 is OK for now.
+   of say 16 is OK for now. (Max)
  - Implement a job which creates a bunch of indexes on the additional fields.
  - Implement a job which creates a search view on a collection.
  - Extend the `normal` job to allow to switch on alternative sharding.

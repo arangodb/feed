@@ -26,4 +26,5 @@ grabs the task and starts working on it.
  - Implement a disjoint smart graph use case.
  - Implement a replace job for `normal`.
  - Implement an update job for `normal`.
+ - Switch payloads to different sizes.
  - ...

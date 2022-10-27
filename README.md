@@ -1,4 +1,4 @@
-# feed - a program to feed ArangoDB with generated random data
+# feed - ArangoDB random data and load generator
 
 This project is about putting data and load into and on an ArangoDB
 instance. Its purpose is to cover:

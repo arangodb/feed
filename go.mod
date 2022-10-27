@@ -1,4 +1,4 @@
-module github.com/neunhoef/feed
+module github.com/arangodb/feed
 
 go 1.19
 

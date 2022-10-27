@@ -2,9 +2,9 @@ package sample
 
 import (
 	"fmt"
+	"github.com/arangodb/feed/pkg/client"
+	"github.com/arangodb/feed/pkg/database"
 	"github.com/arangodb/go-driver"
-	"github.com/neunhoef/feed/pkg/client"
-	"github.com/neunhoef/feed/pkg/database"
 	"os"
 )
 
@@ -13,9 +13,9 @@ func Doit(endpoints []string, jwt string, username string, password string) {
 	var cl driver.Client
 	var err error
 	if jwt != "" {
-	  cl, err = client.NewClient(endpoints, driver.RawAuthentication(jwt))
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(jwt))
 	} else {
-		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(username , password))
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(username, password))
 	}
 	if err != nil {
 		fmt.Printf("Could not connect to database at %v: %v\n", endpoints, err)

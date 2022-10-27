@@ -2,6 +2,7 @@ package feedlang
 
 import (
 	"fmt"
+	"github.com/arangodb/feed/pkg/config"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,9 +60,15 @@ type WaitProg struct {
 }
 
 func (dp *WaitProg) Execute() error {
+	config.OutputMutex.Lock()
 	fmt.Printf("Wait: I am working %d\n", dp.i)
+	config.OutputMutex.Unlock()
+
 	time.Sleep(time.Second * time.Duration(dp.i))
+
+	config.OutputMutex.Lock()
 	fmt.Printf("Wait: I am done %d\n", dp.i)
+	config.OutputMutex.Unlock()
 	return nil
 }
 

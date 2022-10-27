@@ -1,11 +1,11 @@
 package operations
 
 import (
+	"github.com/arangodb/feed/pkg/client"
+	"github.com/arangodb/feed/pkg/config"
+	"github.com/arangodb/feed/pkg/database"
+	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/go-driver"
-	"github.com/neunhoef/feed/pkg/client"
-	"github.com/neunhoef/feed/pkg/config"
-	"github.com/neunhoef/feed/pkg/database"
-	"github.com/neunhoef/feed/pkg/feedlang"
 
 	"context"
 	"crypto/sha256"

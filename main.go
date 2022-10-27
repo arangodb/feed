@@ -6,9 +6,9 @@ import (
 	"bufio"
 	"os"
 
-	"github.com/neunhoef/feed/pkg/config"
-	"github.com/neunhoef/feed/pkg/feedlang"
-	"github.com/neunhoef/feed/pkg/operations"
+	"github.com/arangodb/feed/pkg/config"
+	"github.com/arangodb/feed/pkg/feedlang"
+	"github.com/arangodb/feed/pkg/operations"
 	"github.com/spf13/cobra"
 )
 

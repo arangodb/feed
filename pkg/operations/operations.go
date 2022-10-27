@@ -1,7 +1,7 @@
 package operations
 
 import (
-	"github.com/neunhoef/feed/pkg/feedlang"
+	"github.com/arangodb/feed/pkg/feedlang"
 )
 
 // init sets up the various operations and links them to feedlang

@@ -21,12 +21,29 @@ func Init() {
 // CheckInt64Parameter is used to work on user input from the program and
 // extract an integer parameter value.
 func CheckInt64Parameter(value *int64, name string, input string) error {
+	var mult int64 = 1
+	l := len(input)
+	if l > 0 {
+		if input[l-1] == 'G' || input[l-1] == 'g' {
+			input = input[0 : l-1]
+			mult = 1024 * 1024 * 1024
+		} else if input[l-1] == 'T' || input[l-1] == 't' {
+			input = input[0 : l-1]
+			mult = 1024 * 1024 * 1024 * 1024
+		} else if input[l-1] == 'M' || input[l-1] == 'm' {
+			input = input[0 : l-1]
+			mult = 1024 * 1024
+		} else if input[l-1] == 'K' || input[l-1] == 'k' {
+			input = input[0 : l-1]
+			mult = 1024
+		}
+	}
 	i, e := strconv.ParseInt(input, 10, 64)
 	if e != nil {
 		fmt.Printf("Could not parse %s argument to number: %s, error: %v\n", name, input, e)
 		return e
 	}
-	*value = i
+	*value = i * mult
 	return nil
 }
 
@@ -57,7 +74,7 @@ func WriteStatisticsForTimes(times []time.Duration, msg string) {
 	nr := int64(len(times))
 
 	config.OutputMutex.Lock()
-	fmt.Printf("Times for %s: %s (median), %s (90%%ile), %s (99%%ilie), %s (average)\n",
+	fmt.Printf("%s:\n  %s (median),\n  %s (90%%ile),\n  %s (99%%ilie),\n  %s (average)\n",
 		msg,
 		times[int(float64(0.5)*float64(nr))],
 		times[int(float64(0.9)*float64(nr))],

@@ -96,12 +96,26 @@ func (doc *Doc) ShaKey(index int64, keySize int) {
 	doc.Key = doc.Sha[0:keySize]
 }
 
-func (doc *Doc) FillData(payloadSize int64, withGeo bool, withWords int, source *rand.Rand) {
+type DocumentConfig struct {
+	SizePerDoc   int64
+	Size         int64
+	WithGeo      bool
+	WithWords    int64
+	KeySize      int64
+	NumberFields int64
+}
+
+func (doc *Doc) FillData(docConfig *DocumentConfig, source *rand.Rand) {
+	payloadSize := docConfig.SizePerDoc - docConfig.KeySize - 106
+	// 106 is the approximate overhead for _id, _rev and structures
+	if payloadSize < 0 {
+		payloadSize = int64(5)
+	}
 	doc.Payload = makeRandomStringWithSpaces(int(payloadSize), source)
-	if withGeo {
+	if docConfig.WithGeo {
 		doc.Geo = makeRandomPolygon(source)
 	}
-	if withWords > 0 {
-		doc.Words = makeRandomWords(withWords, source)
+	if docConfig.WithWords > 0 {
+		doc.Words = makeRandomWords(int(docConfig.WithWords), source)
 	}
 }

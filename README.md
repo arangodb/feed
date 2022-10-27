@@ -14,6 +14,7 @@ instance. Its purpose is to cover:
  - graph traversals
  - all is covered by a domain specific language which covers parallel
    and sequential loads
+ - all operations automatically measure throughput and latency and report
 
 ## Example
 

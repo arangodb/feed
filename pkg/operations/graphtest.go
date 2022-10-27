@@ -43,5 +43,5 @@ func init() {
 	if feedlang.Atoms == nil {
 		feedlang.Atoms = make(map[string]feedlang.Maker, 100)
 	}
-	feedlang.Atoms["test"] = TestMaker
+	feedlang.Atoms["cyclic"] = TestMaker
 }

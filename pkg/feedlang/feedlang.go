@@ -84,7 +84,9 @@ func WaitMaker(args []string) (Program, error) {
 }
 
 func init() {
-	Atoms = make(map[string]Maker, 1)
+	if Atoms == nil {
+		Atoms = make(map[string]Maker, 100)
+	}
 	Atoms["wait"] = WaitMaker
 }
 

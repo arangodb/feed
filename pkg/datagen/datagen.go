@@ -36,11 +36,26 @@ type Poly struct {
 }
 
 type Doc struct {
-	Key     string `json:"_key"`
-	Sha     string `json:"sha"`
-	Payload string `json:"payload"`
-	Geo     *Poly  `Json:"geo,omitempty"`
-	Words   string `json:"words,omitempty"`
+	Key      string `json:"_key"`
+	Sha      string `json:"sha"`
+	Payload0 string `json:"payload0"`
+	Payload1 string `json:"payload1,omitempty"`
+	Payload2 string `json:"payload2,omitempty"`
+	Payload3 string `json:"payload3,omitempty"`
+	Payload4 string `json:"payload4,omitempty"`
+	Payload5 string `json:"payload5,omitempty"`
+	Payload6 string `json:"payload6,omitempty"`
+	Payload7 string `json:"payload7,omitempty"`
+	Payload8 string `json:"payload8,omitempty"`
+	Payload9 string `json:"payload9,omitempty"`
+	Payloada string `json:"payloada,omitempty"`
+	Payloadb string `json:"payloadb,omitempty"`
+	Payloadc string `json:"payloadc,omitempty"`
+	Payloadd string `json:"payloadd,omitempty"`
+	Payloade string `json:"payloade,omitempty"`
+	Payloadf string `json:"payloadf,omitempty"`
+	Geo      *Poly  `Json:"geo,omitempty"`
+	Words    string `json:"words,omitempty"`
 }
 
 // makeRandomPolygon makes a random GeoJson polygon.
@@ -106,16 +121,81 @@ type DocumentConfig struct {
 }
 
 func (doc *Doc) FillData(docConfig *DocumentConfig, source *rand.Rand) {
-	payloadSize := docConfig.SizePerDoc - docConfig.KeySize - 106
+	if docConfig.NumberFields > 16 {
+		docConfig.NumberFields = 16
+	} else if docConfig.NumberFields < 1 {
+		docConfig.NumberFields = 1
+	}
+	payloadSize := (docConfig.SizePerDoc - docConfig.KeySize - 106) / docConfig.NumberFields
 	// 106 is the approximate overhead for _id, _rev and structures
 	if payloadSize < 0 {
 		payloadSize = int64(5)
 	}
-	doc.Payload = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payload0 = makeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.WithGeo {
 		doc.Geo = makeRandomPolygon(source)
 	}
 	if docConfig.WithWords > 0 {
 		doc.Words = makeRandomWords(int(docConfig.WithWords), source)
 	}
+	if docConfig.NumberFields < 2 {
+		return
+	}
+	doc.Payload1 = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 3 {
+		return
+	}
+	doc.Payload2 = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 4 {
+		return
+	}
+	doc.Payload3 = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 5 {
+		return
+	}
+	doc.Payload4 = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 6 {
+		return
+	}
+	doc.Payload5 = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 7 {
+		return
+	}
+	doc.Payload6 = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 8 {
+		return
+	}
+	doc.Payload7 = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 9 {
+		return
+	}
+	doc.Payload8 = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 10 {
+		return
+	}
+	doc.Payload9 = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 11 {
+		return
+	}
+	doc.Payloada = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 12 {
+		return
+	}
+	doc.Payloadb = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 13 {
+		return
+	}
+	doc.Payloadc = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 14 {
+		return
+	}
+	doc.Payloadd = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 15 {
+		return
+	}
+	doc.Payloade = makeRandomStringWithSpaces(int(payloadSize), source)
+	if docConfig.NumberFields < 16 {
+		return
+	}
+	doc.Payloadf = makeRandomStringWithSpaces(int(payloadSize), source)
 }

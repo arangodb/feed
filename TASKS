@@ -3,6 +3,7 @@ Let's put in brackets after the description the name of a person who
 grabs the task and starts working on it.
 
  - Design read load use cases.
+ - Design graph traversal use cases. (Markus)
  - Honour the field `NumberFields` in data generation by distributing
    the current `Payload` field across multiple fields. Fixed total maximum
    of say 16 is OK for now. (Max)
@@ -10,7 +11,7 @@ grabs the task and starts working on it.
  - Implement a job which creates a search view on a collection.
  - Extend the `normal` job to allow to switch on alternative sharding.
  - Implement random reads on a collection (with latency and throughput
-   measurements).
+   measurements). (Julia)
  - Implement bulk reads on a collection (with latency and throughput
    measurements).
  - Implement random reads from an index (with latency and throughput
@@ -27,4 +28,6 @@ grabs the task and starts working on it.
  - Implement a replace job for `normal`.
  - Implement an update job for `normal`.
  - Switch payloads to different sizes.
+ - Implement graph producers. (Roman)
+ - Implement framework for graph producers. (Max)
  - ...

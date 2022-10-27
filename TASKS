@@ -1,0 +1,29 @@
+In this document we collect tasks which need doing in this project.
+Let's put in brackets after the description the name of a person who
+grabs the task and starts working on it.
+
+ - Design read load use cases.
+ - Honour the field `NumberFields` in data generation by distributing
+   the current `Payload` field across multiple fields. Fixed total maximum
+   of say 16 is OK for now.
+ - Implement a job which creates a bunch of indexes on the additional fields.
+ - Implement a job which creates a search view on a collection.
+ - Extend the `normal` job to allow to switch on alternative sharding.
+ - Implement random reads on a collection (with latency and throughput
+   measurements).
+ - Implement bulk reads on a collection (with latency and throughput
+   measurements).
+ - Implement random reads from an index (with latency and throughput
+   measurements).
+ - Implement bulk reads from an index (with latency and throughput
+   measurements).
+ - Allow to distribute load across multiple coordinators (we already have
+   multiple endpoints).
+ - Design the interface to graph generators.
+ - Implement a random graph use case.
+ - Implement a binary tree graph generator.
+ - Implement smart graph versions of the above.
+ - Implement a disjoint smart graph use case.
+ - Implement a replace job for `normal`.
+ - Implement an update job for `normal`.
+ - ...

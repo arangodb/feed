@@ -54,18 +54,18 @@ func (s *Parallel) Execute() error {
 	return nil
 }
 
-type DummyProg struct {
+type WaitProg struct {
 	i int
 }
 
-func (dp *DummyProg) Execute() error {
-	fmt.Printf("Dummy: I am working %d\n", dp.i)
+func (dp *WaitProg) Execute() error {
+	fmt.Printf("Wait: I am working %d\n", dp.i)
 	time.Sleep(time.Second * time.Duration(dp.i))
-	fmt.Printf("Dummy: I am done %d\n", dp.i)
+	fmt.Printf("Wait: I am done %d\n", dp.i)
 	return nil
 }
 
-func DummyMaker(args []string) (Program, error) {
+func WaitMaker(args []string) (Program, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("Expecting one integer argument!")
 	}
@@ -73,12 +73,12 @@ func DummyMaker(args []string) (Program, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Could not parse integer %s: %v\n", args[0], err)
 	}
-	return &DummyProg{i: int(i)}, nil
+	return &WaitProg{i: int(i)}, nil
 }
 
 func init() {
 	Atoms = make(map[string]Maker, 1)
-	Atoms["dummy"] = DummyMaker
+	Atoms["wait"] = WaitMaker
 }
 
 func getLine(lines []string, pos *int) (string, error) {

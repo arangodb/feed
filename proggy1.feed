@@ -1,11 +1,11 @@
 [
   {
-    dummy 1
-    dummy 2
-    dummy 3
+    wait 1
+    wait 2
+    wait 3
   }
   {
-    dummy 4
-    dummy 3
+    wait 4
+    wait 3
   }
 ]

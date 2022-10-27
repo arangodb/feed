@@ -72,5 +72,30 @@ Flags:
 
 ## `feedlang` reference
 
-TO BE WRITTEN
+Rules:
 
+ - Input is line based.
+ - Curly braces allow grouping for parallel execution.
+ - Square brackets allow grouping for sequential execution.
+ - Braces and brackets need to be on a line by themselves.
+ - White space at the end and the beginning of a line are ignored.
+ - Lines in which the first non-white space character is `#` are comments.
+ - Empty lines are ignored.
+
+Example:
+
+```
+# Comment
+
+[
+  {
+    wait 1
+    wait 2
+    wait 3
+  }
+  {
+    wait 4
+    wait 3
+  }
+]
+```

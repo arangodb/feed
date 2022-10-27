@@ -264,6 +264,8 @@ func writeSomeBatches(nrBatches int64, id int64, batchSize int64, collectionName
 	cyclestart := time.Now()
 	last100start := cyclestart
 
+	// It is crucial that every go routine has its own random source, otherwise
+	// we create a lot of contention.
 	source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
 
 	for i := int64(1); i <= nrBatches; i++ {

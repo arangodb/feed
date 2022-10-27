@@ -15,7 +15,9 @@ type TestProg struct {
 
 func (dp *TestProg) Execute() error {
 	config.OutputMutex.Lock()
-	c := datagen.NewCyclicGraph(4)
+	defer config.OutputMutex.Unlock()
+
+	c := datagen.NewCyclicGraph(dp.n)
 	v := c.VertexChannel()
 	for V := range v {
 		fmt.Printf("Got Vertex: %v\n", V)
@@ -24,7 +26,6 @@ func (dp *TestProg) Execute() error {
 	for E := range e {
 		fmt.Printf("Got Edge: %v\n", E)
 	}
-	config.OutputMutex.Unlock()
 	return nil
 }
 

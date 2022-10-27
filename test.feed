@@ -1,0 +1,4 @@
+[
+normal create database=xyz collection=c numberOfShards=3 replicationFactor=3 drop=true
+normal insert database=xyz collection=c size=1G documentSize=200 parallelism=10
+]

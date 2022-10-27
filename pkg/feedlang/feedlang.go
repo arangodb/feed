@@ -93,7 +93,7 @@ func getLine(lines []string, pos *int) (string, error) {
 	var line string
 	for *pos < len(lines) {
 		line = strings.TrimSpace(lines[*pos])
-		if len(line) >= 0 && line[0] != '#' {
+		if len(line) > 0 && line[0] != '#' {
 			return line, nil
 		}
 		*pos += 1

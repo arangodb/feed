@@ -7,20 +7,18 @@ grabs the task and starts working on it.
  - Implement graph producing job. (Max)
  - Implement random reads on a collection (with latency and throughput
    measurements). (Julia)
- - Improve argument processing. (Max)
 
+ - Allow to distribute load across multiple coordinators (we already have
+   multiple endpoints).
  - Design read load use cases.
  - Implement a job which creates a bunch of indexes on the additional fields.
  - Implement a job which creates a search view on a collection.
- - Extend the `normal` job to allow to switch on alternative sharding.
  - Implement bulk reads on a collection (with latency and throughput
    measurements).
  - Implement random reads from an index (with latency and throughput
    measurements).
  - Implement bulk reads from an index (with latency and throughput
    measurements).
- - Allow to distribute load across multiple coordinators (we already have
-   multiple endpoints).
  - Design the interface to graph generators.
  - Implement a random graph use case.
  - Implement a binary tree graph generator.
@@ -39,4 +37,5 @@ Done:
    the current `Payload` field across multiple fields. Fixed total maximum
    of say 16 is OK for now. (Max)
  - Implement framework for graph producers. (Max)
+ - Improve argument processing. (Max)
 

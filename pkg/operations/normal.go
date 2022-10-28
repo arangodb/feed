@@ -11,7 +11,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"strings"
 	"sync"
 	"time"
 )
@@ -38,116 +37,29 @@ func NewNormalProg(args []string) (feedlang.Program, error) {
 	// This function parses the command line args and fills the values in
 	// the struct.
 	// Defaults:
+	subCmd, m := ParseArguments(args)
 	var np *NormalProg = &NormalProg{
-		Database:          "_system",
-		Collection:        "batchimport",
-		Drop:              false,
-		SubCommand:        "create",
-		NumberOfShards:    3,
-		ReplicationFactor: 3,
+		Database:          GetStringValue(m, "database", "_system"),
+		Collection:        GetStringValue(m, "collection", "batchimport"),
+		Drop:              GetBoolValue(m, "drop", false),
+		SubCommand:        subCmd,
+		NumberOfShards:    GetInt64Value(m, "numberOfShards", 3),
+		ReplicationFactor: GetInt64Value(m, "replicationFactor", 3),
 		DocConfig: datagen.DocumentConfig{
-			SizePerDoc:   128,
-			Size:         16 * 1024 * 1024 * 1024,
-			WithGeo:      false,
-			WithWords:    0,
-			KeySize:      32,
-			NumberFields: 3,
+			SizePerDoc:   GetInt64Value(m, "documentSize", 128),
+			Size:         GetInt64Value(m, "size", 16*1024*1024*1024),
+			WithGeo:      GetBoolValue(m, "withGeo", false),
+			WithWords:    GetInt64Value(m, "withWords", 0),
+			KeySize:      GetInt64Value(m, "keySize", 32),
+			NumberFields: GetInt64Value(m, "numberFields", 1),
 		},
-		Parallelism: 16,
-		StartDelay:  5,
-		BatchSize:   1000,
+		Parallelism: GetInt64Value(m, "parallelism", 16),
+		StartDelay:  GetInt64Value(m, "startDelay", 5),
+		BatchSize:   GetInt64Value(m, "batchSize", 1000),
 	}
-	for i, s := range args {
-		pair := strings.Split(s, "=")
-		if len(pair) == 1 {
-			if i == 0 {
-				np.SubCommand = strings.TrimSpace(pair[0])
-				if np.SubCommand != "create" &&
-					np.SubCommand != "insert" {
-					return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
-				}
-			} else {
-				return nil, fmt.Errorf("Found argument without = sign: %s", pair[0])
-			}
-		} else if len(pair) == 2 {
-			switch strings.TrimSpace(pair[0]) {
-			case "database":
-				np.Database = strings.TrimSpace(pair[1])
-			case "collection":
-				np.Collection = strings.TrimSpace(pair[1])
-			case "numberOfShards":
-				e := CheckInt64Parameter(&np.NumberOfShards, "numberOfShards",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "replicationFactor":
-				e := CheckInt64Parameter(&np.ReplicationFactor, "replicationFactor",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "parallelism":
-				e := CheckInt64Parameter(&np.Parallelism, "parallelism",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "startDelay":
-				e := CheckInt64Parameter(&np.StartDelay, "startDelay",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "batchSize":
-				e := CheckInt64Parameter(&np.BatchSize, "batchSize",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "size":
-				e := CheckInt64Parameter(&np.DocConfig.Size, "size",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "documentSize":
-				e := CheckInt64Parameter(&np.DocConfig.SizePerDoc, "documentSize",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "keySize":
-				e := CheckInt64Parameter(&np.DocConfig.KeySize, "keySize",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "numberFields":
-				e := CheckInt64Parameter(&np.DocConfig.NumberFields, "numberFields",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "withWords":
-				e := CheckInt64Parameter(&np.DocConfig.WithWords, "withWords",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "drop":
-				x := strings.TrimSpace(pair[1])
-				np.Drop = x == "true" || x == "TRUE" || x == "True" ||
-					x == "1" || x == "yes" || x == "Yes" || x == "YES"
-			case "withGeo":
-				x := strings.TrimSpace(pair[1])
-				np.DocConfig.WithGeo = x == "true" || x == "TRUE" || x == "True" ||
-					x == "1" || x == "yes" || x == "Yes" || x == "YES"
-				// All other cases are ignored intentionally!
-			}
-		} else {
-			return nil, fmt.Errorf("Found argument with more than one = sign: %s", s)
-		}
+	if np.SubCommand != "create" &&
+		np.SubCommand != "insert" {
+		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
 	return np, nil
 }

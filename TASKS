@@ -9,7 +9,8 @@ grabs the task and starts working on it.
    measurements). (Julia)
 
  - Allow to distribute load across multiple coordinators (we already have
-   multiple endpoints).
+   multiple endpoints). (Max)
+
  - Design read load use cases.
  - Implement a job which creates a bunch of indexes on the additional fields.
  - Implement a job which creates a search view on a collection.

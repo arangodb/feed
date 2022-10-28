@@ -218,6 +218,7 @@ func writeSomeBatches(np *NormalProg, nrBatches int64, id int64) error {
 		times = append(times, time.Now().Sub(start))
 		if i%100 == 0 {
 			dur := float64(time.Now().Sub(last100start)) / float64(time.Second)
+			last100start = time.Now()
 
 			// Intermediate report:
 			if config.Verbose {

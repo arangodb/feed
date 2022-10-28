@@ -9,7 +9,7 @@ grabs the task and starts working on it.
    measurements). (Julia)
 
  - Allow to distribute load across multiple coordinators (we already have
-   multiple endpoints). (Max)
+   multiple endpoints). (Max) Done, but needs further testing.
 
  - Design read load use cases.
  - Implement a job which creates a bunch of indexes on the additional fields.

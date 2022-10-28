@@ -101,11 +101,6 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 		np.DocConfig.KeySize = 64
 	}
 
-	db, err := cl.Database(context.Background(), np.Database)
-	if err != nil {
-		return fmt.Errorf("Can not get database: %s", np.Database)
-	}
-
 	// Number of batches to put into the collection:
 	number := (np.DocConfig.Size / np.DocConfig.SizePerDoc) / np.BatchSize
 
@@ -113,7 +108,7 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 	fmt.Printf("\nnormal: Will write %d batches of %d docs across %d goroutines...\n\n", number, np.BatchSize, np.Parallelism)
 	config.OutputMutex.Unlock()
 
-	if err := writeSomeBatchesParallel(np.Parallelism, number, np.StartDelay, np.BatchSize, np.Collection, &np.DocConfig, db); err != nil {
+	if err := writeSomeBatchesParallel(np, number); err != nil {
 		return fmt.Errorf("can not do some batch imports")
 	}
 
@@ -121,12 +116,12 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 }
 
 // writeSomeBatchesParallel does some batch imports in parallel
-func writeSomeBatchesParallel(parallelism int64, number int64, startDelay int64, batchSize int64, collectionName string, docConfig *datagen.DocumentConfig, db driver.Database) error {
+func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 	totaltimestart := time.Now()
 	wg := sync.WaitGroup{}
 	haveError := false
-	for i := 0; i <= int(parallelism)-1; i++ {
-		time.Sleep(time.Duration(startDelay) * time.Millisecond)
+	for i := 0; i <= int(np.Parallelism)-1; i++ {
+		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
 		i := i // bring into scope
 		wg.Add(1)
 
@@ -137,7 +132,7 @@ func writeSomeBatchesParallel(parallelism int64, number int64, startDelay int64,
 				fmt.Printf("normal: Starting go routine...\n")
 				config.OutputMutex.Unlock()
 			}
-			err := writeSomeBatches(number/parallelism, int64(i), batchSize, collectionName, docConfig, db)
+			err := writeSomeBatches(np, number/np.Parallelism, int64(i))
 			if err != nil {
 				fmt.Printf("writeSomeBatches error: %v\n", err)
 				haveError = true
@@ -154,8 +149,8 @@ func writeSomeBatchesParallel(parallelism int64, number int64, startDelay int64,
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
 	batchesPerSec := float64(number) / (float64(totaltime) / float64(time.Second))
-	docspersec := float64(number*batchSize) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nnormal: Total number of documents written: %d,\n  total time: %v,\n  total batches per second: %f,\n  total docs per second: %f\n\n", number*batchSize, totaltimeend.Sub(totaltimestart), batchesPerSec, docspersec)
+	docspersec := float64(number*np.BatchSize) / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: Total number of documents written: %d,\n  total time: %v,\n  total batches per second: %f,\n  total docs per second: %f\n\n", number*np.BatchSize, totaltimeend.Sub(totaltimestart), batchesPerSec, docspersec)
 	if !haveError {
 		return nil
 	}
@@ -164,15 +159,39 @@ func writeSomeBatchesParallel(parallelism int64, number int64, startDelay int64,
 }
 
 // writeSomeBatches writes `nrBatches` batches with `batchSize` documents.
-func writeSomeBatches(nrBatches int64, id int64, batchSize int64, collectionName string, docConfig *datagen.DocumentConfig, db driver.Database) error {
-	edges, err := db.Collection(nil, collectionName)
+func writeSomeBatches(np *NormalProg, nrBatches int64, id int64) error {
+	// Let's use our own private client and connection here:
+	var cl driver.Client
+	var err error
+	var endpoints []string = make([]string, 0, len(config.Endpoints))
+	for _, e := range config.Endpoints {
+		endpoints = append(endpoints, e)
+	}
+	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	config.OutputMutex.Lock()
+	fmt.Printf("Endpoints: %v\n", endpoints)
+	config.OutputMutex.Unlock()
+	if config.Jwt != "" {
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+	} else {
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+	}
 	if err != nil {
-		fmt.Printf("writeSomeBatches: could not open `%s` collection: %v\n", collectionName, err)
+		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
+	}
+	db, err := cl.Database(context.Background(), np.Database)
+	if err != nil {
+		return fmt.Errorf("Can not get database: %s", np.Database)
+	}
+
+	edges, err := db.Collection(nil, np.Collection)
+	if err != nil {
+		fmt.Printf("writeSomeBatches: could not open `%s` collection: %v\n", np.Collection, err)
 		return err
 	}
 
-	docs := make([]datagen.Doc, 0, batchSize)
-	times := make([]time.Duration, 0, batchSize)
+	docs := make([]datagen.Doc, 0, np.BatchSize)
+	times := make([]time.Duration, 0, np.BatchSize)
 	cyclestart := time.Now()
 	last100start := cyclestart
 
@@ -182,10 +201,10 @@ func writeSomeBatches(nrBatches int64, id int64, batchSize int64, collectionName
 
 	for i := int64(1); i <= nrBatches; i++ {
 		start := time.Now()
-		for j := int64(1); j <= batchSize; j++ {
+		for j := int64(1); j <= np.BatchSize; j++ {
 			var doc datagen.Doc
-			doc.ShaKey((id*nrBatches+i-1)*batchSize+j-1, int(docConfig.KeySize))
-			doc.FillData(docConfig, source)
+			doc.ShaKey((id*nrBatches+i-1)*np.BatchSize+j-1, int(np.DocConfig.KeySize))
+			doc.FillData(&np.DocConfig, source)
 			docs = append(docs, doc)
 		}
 		ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Hour)
@@ -210,7 +229,7 @@ func writeSomeBatches(nrBatches int64, id int64, batchSize int64, collectionName
 	}
 
 	totaltime := time.Now().Sub(cyclestart)
-	nrDocs := batchSize * nrBatches
+	nrDocs := np.BatchSize * nrBatches
 	docspersec := float64(nrDocs) / (float64(totaltime) / float64(time.Second))
 
 	WriteStatisticsForTimes(times,

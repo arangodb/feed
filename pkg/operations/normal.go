@@ -66,7 +66,7 @@ func NewNormalProg(args []string) (feedlang.Program, error) {
 		EachReads:   GetInt64Value(m, "eachReads", 50),
 	}
 	if np.SubCommand != "create" &&
-		np.SubCommand != "insert" && np.SubCommand != "random-read" {
+		np.SubCommand != "insert" && np.SubCommand != "randomRead" {
 		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
 	return np, nil
@@ -384,7 +384,7 @@ func (np *NormalProg) Execute() error {
 		return np.Create(cl)
 	case "insert":
 		return np.Insert(cl)
-	case "random-read":
+	case "randomRead":
 		return np.RandomRead(cl)
 	}
 	return nil

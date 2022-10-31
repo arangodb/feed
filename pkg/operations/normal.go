@@ -11,7 +11,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"strings"
 	"sync"
 	"time"
 	/*
@@ -45,124 +44,31 @@ func NewNormalProg(args []string) (feedlang.Program, error) {
 	// This function parses the command line args and fills the values in
 	// the struct.
 	// Defaults:
+	subCmd, m := ParseArguments(args)
 	var np *NormalProg = &NormalProg{
-		Database:          "_system",
-		Collection:        "batchimport",
-		Drop:              false,
-		SubCommand:        "create",
-		NumberOfShards:    3,
-		ReplicationFactor: 3,
+		Database:          GetStringValue(m, "database", "_system"),
+		Collection:        GetStringValue(m, "collection", "batchimport"),
+		Drop:              GetBoolValue(m, "drop", false),
+		SubCommand:        subCmd,
+		NumberOfShards:    GetInt64Value(m, "numberOfShards", 3),
+		ReplicationFactor: GetInt64Value(m, "replicationFactor", 3),
 		DocConfig: datagen.DocumentConfig{
-			SizePerDoc:   128,
-			Size:         16 * 1024 * 1024 * 1024,
-			WithGeo:      false,
-			WithWords:    0,
-			KeySize:      32,
-			NumberFields: 3,
+			SizePerDoc:   GetInt64Value(m, "documentSize", 128),
+			Size:         GetInt64Value(m, "size", 16*1024*1024*1024),
+			WithGeo:      GetBoolValue(m, "withGeo", false),
+			WithWords:    GetInt64Value(m, "withWords", 0),
+			KeySize:      GetInt64Value(m, "keySize", 32),
+			NumberFields: GetInt64Value(m, "numberFields", 1),
 		},
-		Parallelism: 16,
-		StartDelay:  5,
-		BatchSize:   1000,
-		EachReads: 10,
-	}
-	for i, s := range args {
-		pair := strings.Split(s, "=")
-		if len(pair) == 1 {
-			if i == 0 {
-				np.SubCommand = strings.TrimSpace(pair[0])
-				if np.SubCommand != "create" &&
-					np.SubCommand != "insert" && np.SubCommand != "random-read" {
-					return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
-				}
-			} else {
-				return nil, fmt.Errorf("Found argument without = sign: %s", pair[0])
-			}
-		} else if len(pair) == 2 {
-			switch strings.TrimSpace(pair[0]) {
-			case "database":
-				np.Database = strings.TrimSpace(pair[1])
-			case "collection":
-				np.Collection = strings.TrimSpace(pair[1])
-			case "numberOfShards":
-				e := CheckInt64Parameter(&np.NumberOfShards, "numberOfShards",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "replicationFactor":
-				e := CheckInt64Parameter(&np.ReplicationFactor, "replicationFactor",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "parallelism":
-				e := CheckInt64Parameter(&np.Parallelism, "parallelism",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "startDelay":
-				e := CheckInt64Parameter(&np.StartDelay, "startDelay",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "batchSize":
-				e := CheckInt64Parameter(&np.BatchSize, "batchSize",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "size":
-				e := CheckInt64Parameter(&np.DocConfig.Size, "size",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "documentSize":
-				e := CheckInt64Parameter(&np.DocConfig.SizePerDoc, "documentSize",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "keySize":
-				e := CheckInt64Parameter(&np.DocConfig.KeySize, "keySize",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "numberFields":
-				e := CheckInt64Parameter(&np.DocConfig.NumberFields, "numberFields",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "withWords":
-				e := CheckInt64Parameter(&np.DocConfig.WithWords, "withWords",
-					strings.TrimSpace(pair[1]))
-				if e != nil {
-					return nil, e
-				}
-			case "drop":
-				x := strings.TrimSpace(pair[1])
-				np.Drop = x == "true" || x == "TRUE" || x == "True" ||
-					x == "1" || x == "yes" || x == "Yes" || x == "YES"
-			case "withGeo":
-				x := strings.TrimSpace(pair[1])
-				np.DocConfig.WithGeo = x == "true" || x == "TRUE" || x == "True" ||
-					x == "1" || x == "yes" || x == "Yes" || x == "YES"
-				// All other cases are ignored intentionally!
-		    case "eachReads":
-               e := CheckInt64Parameter(&np.EachReads, "reachReads",
-                    strings.TrimSpace(pair[1]))
-                if e != nil {
-                    return nil, e
-                }
-			}
 
-		} else {
-			return nil, fmt.Errorf("Found argument with more than one = sign: %s", s)
-		}
+		Parallelism: GetInt64Value(m, "parallelism", 16),
+		StartDelay:  GetInt64Value(m, "startDelay", 5),
+		BatchSize:   GetInt64Value(m, "batchSize", 1000),
+		EachReads:   GetInt64Value(m, "eachReads", 50),
+	}
+	if np.SubCommand != "create" &&
+		np.SubCommand != "insert" && np.SubCommand != "random-read" {
+		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
 	return np, nil
 }
@@ -204,12 +110,6 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 		np.DocConfig.KeySize = 64
 	}
 
-	db, err := cl.Database(context.Background(), np.Database)
-
-	if err != nil {
-		return fmt.Errorf("Can not get database: %s", np.Database)
-	}
-
 	// Number of batches to put into the collection:
 	number := (np.DocConfig.Size / np.DocConfig.SizePerDoc) / np.BatchSize
 
@@ -217,7 +117,7 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 	fmt.Printf("\nnormal: Will write %d batches of %d docs across %d goroutines...\n\n", number, np.BatchSize, np.Parallelism)
 	config.OutputMutex.Unlock()
 
-	if err := writeSomeBatchesParallel(np.Parallelism, number, np.StartDelay, np.BatchSize, np.Collection, &np.DocConfig, db); err != nil {
+	if err := writeSomeBatchesParallel(np, number); err != nil {
 		return fmt.Errorf("can not do some batch imports")
 	}
 
@@ -225,88 +125,114 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 }
 
 func (np *NormalProg) RandomRead(cl driver.Client) error {
-	db, err := cl.Database(context.Background(), np.Database)
-
-	if err != nil {
-		return fmt.Errorf("Can not get database: %s", np.Database)
-	}
-
 	config.OutputMutex.Lock()
 	fmt.Printf("\nnormal: Will perform random reads.\n\n");
 	config.OutputMutex.Unlock()
 
-	if err := readRandomlyInParallel(np.Parallelism, np.EachReads, np.StartDelay, np.Collection, np.DocConfig.KeySize, db); err != nil {
-		return fmt.Errorf("can not do some batch imports")
+	if err := readRandomlyInParallel(np); err != nil {
+		return fmt.Errorf("can not read randomly")
 	}
 
 	return nil
 }
 
-func readRandomlyInParallel(parallelism int64, randReads int64, startDelay int64, collectionName string, keySize int64, db driver.Database) error {
-    totaltimestart := time.Now()
-    wg := sync.WaitGroup{}
-	haveError := false
-    col, err := db.Collection(nil, collectionName)
-    if err != nil {
-        fmt.Printf("randomRead error opening collection: %v\n", err)
-        haveError = true;
+func readOnlyPerThread(np *NormalProg) error {
+ // Let's use our own private client and connection here:
+    var cl driver.Client
+    var err error
+    var endpoints []string = make([]string, 0, len(config.Endpoints))
+    for _, e := range config.Endpoints {
+        endpoints = append(endpoints, e)
     }
+    rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+    config.OutputMutex.Lock()
+    fmt.Printf("Endpoints: %v\n", endpoints)
+    config.OutputMutex.Unlock()
+    if config.Jwt != "" {
+        cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+    } else {
+        cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+    }
+    if err != nil {
+        return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
+    }
+    db, err := cl.Database(context.Background(), np.Database)
+    if err != nil {
+        return fmt.Errorf("Can not get database: %s", np.Database)
+    }
+
+    col, err := db.Collection(nil, np.Collection)
+    if err != nil {
+        fmt.Printf("randomReads: could not open `%s` collection: %v\n", np.Collection, err)
+        return err
+    }
+
     ctx := context.Background()
     colSize, err := col.Count(ctx);
     if err != nil {
-            fmt.Printf("randomRead error opening collection: %v\n", err)
-            haveError = true;
+         fmt.Printf("randomReads: could not count num of docs for `%s` collection: %v\n", np.Collection, err)
+         return err
     }
 
-    if !haveError {
-        for i := 0; i <= int(parallelism)-1; i++ {
-            time.Sleep(time.Duration(startDelay) * time.Millisecond)
-            i := i // bring into scope
-            wg.Add(1)
+    times := make([]time.Duration, 0, np.EachReads)
+    cyclestart := time.Now()
+    for i := int64(1); i <= np.EachReads; i++ {
+        randIntId := rand.Int63n(colSize) + 1
 
-            go func(wg *sync.WaitGroup, i int) {
-                defer wg.Done()
-                if config.Verbose {
-                    config.OutputMutex.Lock()
-                    fmt.Printf("normal: Starting go routine...\n")
-                    config.OutputMutex.Unlock()
-                }
-                times := make([]time.Duration, 0, randReads)
-                cyclestart := time.Now()
-                for i := int64(1); i <= randReads; i++ {
-                    randIntId := rand.Int63n(colSize) + 1
+        var doc datagen.Doc
+        doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
 
-                    var doc datagen.Doc
-                    doc.ShaKey(randIntId, int(keySize))
-
-                    var doc2 datagen.Doc
-                    start := time.Now()
-                    _, err := col.ReadDocument(ctx, doc.Key, &doc2)
-                    if err != nil {
-                        fmt.Printf("randomRead error document: %v\n", err)
-                        haveError = true
-                    } else {
-                        times = append(times, time.Now().Sub(start))
-                    }
-                }
-                totaltime := time.Now().Sub(cyclestart)
-                readspersec := float64(randReads) / (float64(totaltime) / float64(time.Second))
-                WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for reading %d docs randomly.\n  docs per second in this go routine: %f", randReads, readspersec))
-
-                if config.Verbose {
-                    config.OutputMutex.Lock()
-                    fmt.Printf("normal: Go routine %d done\n", i)
-                    config.OutputMutex.Unlock()
-                }
-            }(&wg, i)
+        var doc2 datagen.Doc
+        start := time.Now()
+        _, err := col.ReadDocument(ctx, doc.Key, &doc2)
+        if err != nil {
+            return fmt.Errorf("Can not read document with _key %s %v\n", doc.Key, err)
+        } else {
+            times = append(times, time.Now().Sub(start))
         }
-	}
+    }
+    totaltime := time.Now().Sub(cyclestart)
+    readspersec := float64(np.EachReads) / (float64(totaltime) / float64(time.Second))
+    WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for reading %d docs randomly.\n  docs per second in this go routine: %f", np.EachReads, readspersec))
+    return nil
+}
+
+func readRandomlyInParallel(np *NormalProg) error {
+    totaltimestart := time.Now()
+    wg := sync.WaitGroup{}
+	haveError := false
+    for i := 0; i <= int(np.Parallelism)-1; i++ {
+        time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
+        i := i // bring into scope
+        wg.Add(1)
+
+        go func(wg *sync.WaitGroup, i int) {
+            defer wg.Done()
+            if config.Verbose {
+                config.OutputMutex.Lock()
+                fmt.Printf("normal: Starting go routine...\n")
+                config.OutputMutex.Unlock()
+            }
+
+            err := readOnlyPerThread(np)
+			if err != nil {
+				fmt.Printf("writeSomeBatches error: %v\n", err)
+				haveError = true
+			}
+
+            if config.Verbose {
+                config.OutputMutex.Lock()
+                fmt.Printf("normal: Go routine %d done\n", i)
+                config.OutputMutex.Unlock()
+            }
+        }(&wg, i)
+    }
 
 	wg.Wait()
     totaltimeend := time.Now()
     totaltime := totaltimeend.Sub(totaltimestart)
-    readspersec := float64(parallelism*randReads) / (float64(totaltime) / float64(time.Second))
-    fmt.Printf("\nnormal: Total number of reads: %d,\n  total time: %v,\n total reads per second: %f\n\n", parallelism*randReads, totaltimeend.Sub(totaltimestart), readspersec)
+    readspersec := float64(np.Parallelism*np.EachReads) / (float64(totaltime) / float64(time.Second))
+    fmt.Printf("\nnormal: Total number of reads: %d,\n  total time: %v,\n total reads per second: %f\n\n", np.Parallelism*np.EachReads, totaltimeend.Sub(totaltimestart), readspersec)
 	if !haveError {
 		return nil
 	}
@@ -316,12 +242,12 @@ func readRandomlyInParallel(parallelism int64, randReads int64, startDelay int64
 
 
 // writeSomeBatchesParallel does some batch imports in parallel
-func writeSomeBatchesParallel(parallelism int64, number int64, startDelay int64, batchSize int64, collectionName string, docConfig *datagen.DocumentConfig, db driver.Database) error {
+func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 	totaltimestart := time.Now()
 	wg := sync.WaitGroup{}
 	haveError := false
-	for i := 0; i <= int(parallelism)-1; i++ {
-		time.Sleep(time.Duration(startDelay) * time.Millisecond)
+	for i := 0; i <= int(np.Parallelism)-1; i++ {
+		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
 		i := i // bring into scope
 		wg.Add(1)
 
@@ -332,7 +258,7 @@ func writeSomeBatchesParallel(parallelism int64, number int64, startDelay int64,
 				fmt.Printf("normal: Starting go routine...\n")
 				config.OutputMutex.Unlock()
 			}
-			err := writeSomeBatches(number/parallelism, int64(i), batchSize, collectionName, docConfig, db)
+			err := writeSomeBatches(np, number/np.Parallelism, int64(i))
 			if err != nil {
 				fmt.Printf("writeSomeBatches error: %v\n", err)
 				haveError = true
@@ -349,8 +275,8 @@ func writeSomeBatchesParallel(parallelism int64, number int64, startDelay int64,
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
 	batchesPerSec := float64(number) / (float64(totaltime) / float64(time.Second))
-	docspersec := float64(number*batchSize) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nnormal: Total number of documents written: %d,\n  total time: %v,\n  total batches per second: %f,\n  total docs per second: %f\n\n", number*batchSize, totaltimeend.Sub(totaltimestart), batchesPerSec, docspersec)
+	docspersec := float64(number*np.BatchSize) / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: Total number of documents written: %d,\n  total time: %v,\n  total batches per second: %f,\n  total docs per second: %f\n\n", number*np.BatchSize, totaltimeend.Sub(totaltimestart), batchesPerSec, docspersec)
 	if !haveError {
 		return nil
 	}
@@ -359,15 +285,39 @@ func writeSomeBatchesParallel(parallelism int64, number int64, startDelay int64,
 }
 
 // writeSomeBatches writes `nrBatches` batches with `batchSize` documents.
-func writeSomeBatches(nrBatches int64, id int64, batchSize int64, collectionName string, docConfig *datagen.DocumentConfig, db driver.Database) error {
-	edges, err := db.Collection(nil, collectionName)
+func writeSomeBatches(np *NormalProg, nrBatches int64, id int64) error {
+	// Let's use our own private client and connection here:
+	var cl driver.Client
+	var err error
+	var endpoints []string = make([]string, 0, len(config.Endpoints))
+	for _, e := range config.Endpoints {
+		endpoints = append(endpoints, e)
+	}
+	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	config.OutputMutex.Lock()
+	fmt.Printf("Endpoints: %v\n", endpoints)
+	config.OutputMutex.Unlock()
+	if config.Jwt != "" {
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+	} else {
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+	}
 	if err != nil {
-		fmt.Printf("writeSomeBatches: could not open `%s` collection: %v\n", collectionName, err)
+		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
+	}
+	db, err := cl.Database(context.Background(), np.Database)
+	if err != nil {
+		return fmt.Errorf("Can not get database: %s", np.Database)
+	}
+
+	edges, err := db.Collection(nil, np.Collection)
+	if err != nil {
+		fmt.Printf("writeSomeBatches: could not open `%s` collection: %v\n", np.Collection, err)
 		return err
 	}
 
-	docs := make([]datagen.Doc, 0, batchSize)
-	times := make([]time.Duration, 0, batchSize)
+	docs := make([]datagen.Doc, 0, np.BatchSize)
+	times := make([]time.Duration, 0, np.BatchSize)
 	cyclestart := time.Now()
 	last100start := cyclestart
 
@@ -377,10 +327,10 @@ func writeSomeBatches(nrBatches int64, id int64, batchSize int64, collectionName
 
 	for i := int64(1); i <= nrBatches; i++ {
 		start := time.Now()
-		for j := int64(1); j <= batchSize; j++ {
+		for j := int64(1); j <= np.BatchSize; j++ {
 			var doc datagen.Doc
-			doc.ShaKey((id*nrBatches+i-1)*batchSize+j-1, int(docConfig.KeySize))
-			doc.FillData(docConfig, source)
+			doc.ShaKey((id*nrBatches+i-1)*np.BatchSize+j-1, int(np.DocConfig.KeySize))
+			doc.FillData(&np.DocConfig, source)
 			docs = append(docs, doc)
 		}
 		ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Hour)
@@ -394,6 +344,7 @@ func writeSomeBatches(nrBatches int64, id int64, batchSize int64, collectionName
 		times = append(times, time.Now().Sub(start))
 		if i%100 == 0 {
 			dur := float64(time.Now().Sub(last100start)) / float64(time.Second)
+			last100start = time.Now()
 
 			// Intermediate report:
 			if config.Verbose {
@@ -405,7 +356,7 @@ func writeSomeBatches(nrBatches int64, id int64, batchSize int64, collectionName
 	}
 
 	totaltime := time.Now().Sub(cyclestart)
-	nrDocs := batchSize * nrBatches
+	nrDocs := np.BatchSize * nrBatches
 	docspersec := float64(nrDocs) / (float64(totaltime) / float64(time.Second))
 
 	WriteStatisticsForTimes(times,

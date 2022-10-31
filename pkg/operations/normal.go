@@ -144,6 +144,7 @@ func readOnlyPerThread(np *NormalProg) error {
 		endpoints = append(endpoints, e)
 	}
 	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	endpoints = endpoints[0:1] // Restrict to the first
 	config.OutputMutex.Lock()
 	fmt.Printf("Endpoints: %v\n", endpoints)
 	config.OutputMutex.Unlock()
@@ -292,6 +293,7 @@ func writeSomeBatches(np *NormalProg, nrBatches int64, id int64) error {
 		endpoints = append(endpoints, e)
 	}
 	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	endpoints = endpoints[0:1] // Restrict to the first
 	config.OutputMutex.Lock()
 	fmt.Printf("Endpoints: %v\n", endpoints)
 	config.OutputMutex.Unlock()

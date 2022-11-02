@@ -7,6 +7,8 @@ grabs the task and starts working on it.
  - Implement graph producing job. (Max)
  - Implement random reads on a collection (with latency and throughput
    measurements). (Julia)
+ - Implement a replace job for `normal`. (Julia)
+ - Implement an update job for `normal`. (Julia)
 
  - Allow to distribute load across multiple coordinators (we already have
    multiple endpoints). (Max) Done, but needs further testing.
@@ -25,8 +27,6 @@ grabs the task and starts working on it.
  - Implement a binary tree graph generator.
  - Implement smart graph versions of the above.
  - Implement a disjoint smart graph use case.
- - Implement a replace job for `normal`.
- - Implement an update job for `normal`.
  - Switch payloads to different sizes.
  - ...
 

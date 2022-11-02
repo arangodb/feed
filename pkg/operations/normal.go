@@ -36,7 +36,7 @@ type NormalProg struct {
 	BatchSize   int64
 
 	// Parameters for random reads:
-	EachReads int64
+	loadPerThread int64
 }
 
 func NewNormalProg(args []string) (feedlang.Program, error) {
@@ -60,13 +60,14 @@ func NewNormalProg(args []string) (feedlang.Program, error) {
 			NumberFields: GetInt64Value(m, "numberFields", 1),
 		},
 
-		Parallelism: GetInt64Value(m, "parallelism", 16),
-		StartDelay:  GetInt64Value(m, "startDelay", 5),
-		BatchSize:   GetInt64Value(m, "batchSize", 1000),
-		EachReads:   GetInt64Value(m, "eachReads", 50),
+		Parallelism:   GetInt64Value(m, "parallelism", 16),
+		StartDelay:    GetInt64Value(m, "startDelay", 5),
+		BatchSize:     GetInt64Value(m, "batchSize", 1000),
+		loadPerThread: GetInt64Value(m, "loadPerThread", 50),
 	}
+	//maybe put these subcommands in a set-like structure
 	if np.SubCommand != "create" &&
-		np.SubCommand != "insert" && np.SubCommand != "randomRead" {
+		np.SubCommand != "insert" && np.SubCommand != "randomRead" && np.SubCommand != "randomUpdate" && np.SubCommand != "randomReplace" {
 		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
 	return np, nil
@@ -123,6 +124,30 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 	return nil
 }
 
+func (np *NormalProg) RandomReplace(cl driver.Client) error {
+	config.OutputMutex.Lock()
+	fmt.Printf("\nnormal: Will perform random reads.\n\n")
+	config.OutputMutex.Unlock()
+
+	if err := replaceRandomlyInParallel(np); err != nil {
+		return fmt.Errorf("can not replace randomly")
+	}
+
+	return nil
+}
+
+func (np *NormalProg) RandomUpdate(cl driver.Client) error {
+	config.OutputMutex.Lock()
+	fmt.Printf("\nnormal: Will perform random reads.\n\n")
+	config.OutputMutex.Unlock()
+
+	if err := updateRandomlyInParallel(np); err != nil {
+		return fmt.Errorf("can not update randomly")
+	}
+
+	return nil
+}
+
 func (np *NormalProg) RandomRead(cl driver.Client) error {
 	config.OutputMutex.Lock()
 	fmt.Printf("\nnormal: Will perform random reads.\n\n")
@@ -133,6 +158,224 @@ func (np *NormalProg) RandomRead(cl driver.Client) error {
 	}
 
 	return nil
+}
+
+func replacePerThread(np *NormalProg) error {
+	// Let's use our own private client and connection here:
+	var cl driver.Client
+	var err error
+	var endpoints []string = make([]string, 0, len(config.Endpoints))
+	for _, e := range config.Endpoints {
+		endpoints = append(endpoints, e)
+	}
+	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	endpoints = endpoints[0:1] // Restrict to the first
+	config.OutputMutex.Lock()
+	fmt.Printf("Endpoints: %v\n", endpoints)
+	config.OutputMutex.Unlock()
+	if config.Jwt != "" {
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+	} else {
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+	}
+	if err != nil {
+		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
+	}
+	db, err := cl.Database(context.Background(), np.Database)
+	if err != nil {
+		return fmt.Errorf("Can not get database: %s", np.Database)
+	}
+
+	col, err := db.Collection(nil, np.Collection)
+	if err != nil {
+		fmt.Printf("randomReplace: could not open `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	ctx := context.Background()
+	colSize, err := col.Count(ctx)
+	if err != nil {
+		fmt.Printf("randomReplace: could not count num of docs for `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	times := make([]time.Duration, 0, np.loadPerThread)
+	cyclestart := time.Now()
+	fieldNewValue := map[string]interface{}{
+		"payload1": rand.Int63n(colSize),
+	}
+	for i := int64(1); i <= np.loadPerThread; i++ {
+		randIntId := rand.Int63n(colSize) + 1
+
+		var doc datagen.Doc
+		doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
+
+		start := time.Now()
+
+		//Obs.: here, we can call ReplaceDocuments() too, so we can replace an array of docs at once
+		_, err := col.ReplaceDocument(ctx, doc.Key, fieldNewValue)
+		if err != nil {
+			return fmt.Errorf("Can not replace document with _key %s %v\n", doc.Key, err)
+		} else {
+			times = append(times, time.Now().Sub(start))
+		}
+	}
+	totaltime := time.Now().Sub(cyclestart)
+	replacespersec := float64(np.loadPerThread) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for replacing %d docs randomly.\n  docs per second in this go routine: %f", np.loadPerThread, replacespersec))
+	return nil
+}
+
+func replaceRandomlyInParallel(np *NormalProg) error {
+	totaltimestart := time.Now()
+	wg := sync.WaitGroup{}
+	haveError := false
+	for i := 0; i <= int(np.Parallelism)-1; i++ {
+		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
+		i := i // bring into scope
+		wg.Add(1)
+
+		go func(wg *sync.WaitGroup, i int) {
+			defer wg.Done()
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Starting go routine...\n")
+				config.OutputMutex.Unlock()
+			}
+
+			err := replacePerThread(np)
+			if err != nil {
+				fmt.Printf("randomReplace error: %v\n", err)
+				haveError = true
+			}
+
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Go routine %d done\n", i)
+				config.OutputMutex.Unlock()
+			}
+		}(&wg, i)
+	}
+
+	wg.Wait()
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+	replacespersec := float64(np.Parallelism*np.loadPerThread) / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: Total number of replaces: %d,\n  total time: %v,\n total replaces per second: %f\n\n", np.Parallelism*np.loadPerThread, totaltimeend.Sub(totaltimestart), replacespersec)
+	if !haveError {
+		return nil
+	}
+	fmt.Printf("Error in randomReplace.\n")
+	return fmt.Errorf("Error in randomReplace.")
+}
+
+func updatePerThread(np *NormalProg) error {
+	// Let's use our own private client and connection here:
+	var cl driver.Client
+	var err error
+	var endpoints []string = make([]string, 0, len(config.Endpoints))
+	for _, e := range config.Endpoints {
+		endpoints = append(endpoints, e)
+	}
+	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	endpoints = endpoints[0:1] // Restrict to the first
+	config.OutputMutex.Lock()
+	fmt.Printf("Endpoints: %v\n", endpoints)
+	config.OutputMutex.Unlock()
+	if config.Jwt != "" {
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+	} else {
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+	}
+	if err != nil {
+		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
+	}
+	db, err := cl.Database(context.Background(), np.Database)
+	if err != nil {
+		return fmt.Errorf("Can not get database: %s", np.Database)
+	}
+
+	col, err := db.Collection(nil, np.Collection)
+	if err != nil {
+		fmt.Printf("randomUpdate: could not open `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	ctx := context.Background()
+	colSize, err := col.Count(ctx)
+	if err != nil {
+		fmt.Printf("randomUpdate: could not count num of docs for `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	times := make([]time.Duration, 0, np.loadPerThread)
+	cyclestart := time.Now()
+	fieldNewValue := map[string]interface{}{
+		"payload1": rand.Int63n(colSize),
+	}
+	for i := int64(1); i <= np.loadPerThread; i++ {
+		randIntId := rand.Int63n(colSize) + 1
+
+		var doc datagen.Doc
+		doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
+
+		start := time.Now()
+
+		//Obs.: here, we can call UpdateDocuments() too, so we can update an array of docs at once
+		_, err := col.UpdateDocument(ctx, doc.Key, fieldNewValue)
+		if err != nil {
+			return fmt.Errorf("Can not update document with _key %s %v\n", doc.Key, err)
+		} else {
+			times = append(times, time.Now().Sub(start))
+		}
+	}
+	totaltime := time.Now().Sub(cyclestart)
+	updatespersec := float64(np.loadPerThread) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for updating %d docs randomly.\n  docs per second in this go routine: %f", np.loadPerThread, updatespersec))
+	return nil
+}
+
+func updateRandomlyInParallel(np *NormalProg) error {
+	totaltimestart := time.Now()
+	wg := sync.WaitGroup{}
+	haveError := false
+	for i := 0; i <= int(np.Parallelism)-1; i++ {
+		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
+		i := i // bring into scope
+		wg.Add(1)
+
+		go func(wg *sync.WaitGroup, i int) {
+			defer wg.Done()
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Starting go routine...\n")
+				config.OutputMutex.Unlock()
+			}
+
+			err := updatePerThread(np)
+			if err != nil {
+				fmt.Printf("randomUpdate error: %v\n", err)
+				haveError = true
+			}
+
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Go routine %d done\n", i)
+				config.OutputMutex.Unlock()
+			}
+		}(&wg, i)
+	}
+
+	wg.Wait()
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+	updatespersec := float64(np.Parallelism*np.loadPerThread) / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: Total number of updates: %d,\n  total time: %v,\n total updates per second: %f\n\n", np.Parallelism*np.loadPerThread, totaltimeend.Sub(totaltimestart), updatespersec)
+	if !haveError {
+		return nil
+	}
+	fmt.Printf("Error in randomRead.\n")
+	return fmt.Errorf("Error in randomRead.")
 }
 
 func readOnlyPerThread(np *NormalProg) error {
@@ -174,9 +417,9 @@ func readOnlyPerThread(np *NormalProg) error {
 		return err
 	}
 
-	times := make([]time.Duration, 0, np.EachReads)
+	times := make([]time.Duration, 0, np.loadPerThread)
 	cyclestart := time.Now()
-	for i := int64(1); i <= np.EachReads; i++ {
+	for i := int64(1); i <= np.loadPerThread; i++ {
 		randIntId := rand.Int63n(colSize) + 1
 
 		var doc datagen.Doc
@@ -192,8 +435,8 @@ func readOnlyPerThread(np *NormalProg) error {
 		}
 	}
 	totaltime := time.Now().Sub(cyclestart)
-	readspersec := float64(np.EachReads) / (float64(totaltime) / float64(time.Second))
-	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for reading %d docs randomly.\n  docs per second in this go routine: %f", np.EachReads, readspersec))
+	readspersec := float64(np.loadPerThread) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for reading %d docs randomly.\n  docs per second in this go routine: %f", np.loadPerThread, readspersec))
 	return nil
 }
 
@@ -216,7 +459,7 @@ func readRandomlyInParallel(np *NormalProg) error {
 
 			err := readOnlyPerThread(np)
 			if err != nil {
-				fmt.Printf("writeSomeBatches error: %v\n", err)
+				fmt.Printf("randomRead error: %v\n", err)
 				haveError = true
 			}
 
@@ -231,8 +474,8 @@ func readRandomlyInParallel(np *NormalProg) error {
 	wg.Wait()
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
-	readspersec := float64(np.Parallelism*np.EachReads) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nnormal: Total number of reads: %d,\n  total time: %v,\n total reads per second: %f\n\n", np.Parallelism*np.EachReads, totaltimeend.Sub(totaltimestart), readspersec)
+	readspersec := float64(np.Parallelism*np.loadPerThread) / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: Total number of reads: %d,\n  total time: %v,\n total reads per second: %f\n\n", np.Parallelism*np.loadPerThread, totaltimeend.Sub(totaltimestart), readspersec)
 	if !haveError {
 		return nil
 	}
@@ -386,6 +629,10 @@ func (np *NormalProg) Execute() error {
 		return np.Insert(cl)
 	case "randomRead":
 		return np.RandomRead(cl)
+	case "randomUpdate":
+		return np.RandomUpdate(cl)
+	case "randomReplace":
+		return np.RandomReplace(cl)
 	}
 	return nil
 }

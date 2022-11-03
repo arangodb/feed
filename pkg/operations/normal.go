@@ -11,12 +11,10 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
-	/*
-		"crypto/sha256"
-		"strconv"
-	*/)
+)
 
 type NormalProg struct {
 	// General parameters:
@@ -38,6 +36,13 @@ type NormalProg struct {
 	// Parameters for random reads:
 	loadPerThread int64
 }
+
+type WriteConflictStats struct {
+	numUpdateWriteConflicts  int64
+	numReplaceWriteConflicts int64
+}
+
+var writeConflictStats WriteConflictStats
 
 func NewNormalProg(args []string) (feedlang.Program, error) {
 	// This function parses the command line args and fills the values in
@@ -126,7 +131,7 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 
 func (np *NormalProg) RandomReplace(cl driver.Client) error {
 	config.OutputMutex.Lock()
-	fmt.Printf("\nnormal: Will perform random reads.\n\n")
+	fmt.Printf("\nnormal: Will perform random replaces.\n\n")
 	config.OutputMutex.Unlock()
 
 	if err := replaceRandomlyInParallel(np); err != nil {
@@ -138,7 +143,7 @@ func (np *NormalProg) RandomReplace(cl driver.Client) error {
 
 func (np *NormalProg) RandomUpdate(cl driver.Client) error {
 	config.OutputMutex.Lock()
-	fmt.Printf("\nnormal: Will perform random reads.\n\n")
+	fmt.Printf("\nnormal: Will perform random updates.\n\n")
 	config.OutputMutex.Unlock()
 
 	if err := updateRandomlyInParallel(np); err != nil {
@@ -160,7 +165,7 @@ func (np *NormalProg) RandomRead(cl driver.Client) error {
 	return nil
 }
 
-func replacePerThread(np *NormalProg) error {
+func replacePerThread(np *NormalProg, mtx *sync.Mutex) error {
 	// Let's use our own private client and connection here:
 	var cl driver.Client
 	var err error
@@ -214,11 +219,16 @@ func replacePerThread(np *NormalProg) error {
 
 		//Obs.: here, we can call ReplaceDocuments() too, so we can replace an array of docs at once
 		_, err := col.ReplaceDocument(ctx, doc.Key, fieldNewValue)
-		if err != nil {
-			return fmt.Errorf("Can not replace document with _key %s %v\n", doc.Key, err)
-		} else {
-			times = append(times, time.Now().Sub(start))
+		if err != nil { //if there's a write/write conflict, we ignore it, but count for statistics
+			if strings.Contains(err.Error(), "waiting to lock key") || strings.Contains(err.Error(), "conflict") {
+				mtx.Lock()
+				writeConflictStats.numReplaceWriteConflicts++
+				mtx.Unlock()
+			} else {
+				return fmt.Errorf("Can not replace document with _key %s %v\n", doc.Key, err)
+			}
 		}
+		times = append(times, time.Now().Sub(start))
 	}
 	totaltime := time.Now().Sub(cyclestart)
 	replacespersec := float64(np.loadPerThread) / (float64(totaltime) / float64(time.Second))
@@ -230,12 +240,13 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 	totaltimestart := time.Now()
 	wg := sync.WaitGroup{}
 	haveError := false
+	var mtx sync.Mutex
 	for i := 0; i <= int(np.Parallelism)-1; i++ {
 		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
 		i := i // bring into scope
 		wg.Add(1)
 
-		go func(wg *sync.WaitGroup, i int) {
+		go func(wg *sync.WaitGroup, i int, mtx *sync.Mutex) {
 			defer wg.Done()
 			if config.Verbose {
 				config.OutputMutex.Lock()
@@ -243,7 +254,7 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 				config.OutputMutex.Unlock()
 			}
 
-			err := replacePerThread(np)
+			err := replacePerThread(np, mtx)
 			if err != nil {
 				fmt.Printf("randomReplace error: %v\n", err)
 				haveError = true
@@ -254,14 +265,14 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 				fmt.Printf("normal: Go routine %d done\n", i)
 				config.OutputMutex.Unlock()
 			}
-		}(&wg, i)
+		}(&wg, i, &mtx)
 	}
 
 	wg.Wait()
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
 	replacespersec := float64(np.Parallelism*np.loadPerThread) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nnormal: Total number of replaces: %d,\n  total time: %v,\n total replaces per second: %f\n\n", np.Parallelism*np.loadPerThread, totaltimeend.Sub(totaltimestart), replacespersec)
+	fmt.Printf("\nnormal: Total number of replaces: %d,\n  total time: %v,\n total replaces per second: %f,\n total write conflicts: %d \n\n", np.Parallelism*np.loadPerThread, totaltimeend.Sub(totaltimestart), replacespersec, writeConflictStats.numReplaceWriteConflicts)
 	if !haveError {
 		return nil
 	}
@@ -269,7 +280,7 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 	return fmt.Errorf("Error in randomReplace.")
 }
 
-func updatePerThread(np *NormalProg) error {
+func updatePerThread(np *NormalProg, mtx *sync.Mutex) error {
 	// Let's use our own private client and connection here:
 	var cl driver.Client
 	var err error
@@ -315,7 +326,6 @@ func updatePerThread(np *NormalProg) error {
 	}
 	for i := int64(1); i <= np.loadPerThread; i++ {
 		randIntId := rand.Int63n(colSize) + 1
-
 		var doc datagen.Doc
 		doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
 
@@ -323,11 +333,16 @@ func updatePerThread(np *NormalProg) error {
 
 		//Obs.: here, we can call UpdateDocuments() too, so we can update an array of docs at once
 		_, err := col.UpdateDocument(ctx, doc.Key, fieldNewValue)
-		if err != nil {
-			return fmt.Errorf("Can not update document with _key %s %v\n", doc.Key, err)
-		} else {
-			times = append(times, time.Now().Sub(start))
+		if err != nil { //if there's a write/write conflict, we ignore it, but count for statistics
+			if strings.Contains(err.Error(), "waiting to lock key") || strings.Contains(err.Error(), "conflict") {
+				mtx.Lock()
+				writeConflictStats.numUpdateWriteConflicts++
+				mtx.Unlock()
+			} else {
+				return fmt.Errorf("Can not update document with _key %s %v\n", doc.Key, err)
+			}
 		}
+		times = append(times, time.Now().Sub(start))
 	}
 	totaltime := time.Now().Sub(cyclestart)
 	updatespersec := float64(np.loadPerThread) / (float64(totaltime) / float64(time.Second))
@@ -339,12 +354,13 @@ func updateRandomlyInParallel(np *NormalProg) error {
 	totaltimestart := time.Now()
 	wg := sync.WaitGroup{}
 	haveError := false
+	var mtx sync.Mutex
 	for i := 0; i <= int(np.Parallelism)-1; i++ {
 		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
 		i := i // bring into scope
 		wg.Add(1)
 
-		go func(wg *sync.WaitGroup, i int) {
+		go func(wg *sync.WaitGroup, i int, mtx *sync.Mutex) {
 			defer wg.Done()
 			if config.Verbose {
 				config.OutputMutex.Lock()
@@ -352,7 +368,7 @@ func updateRandomlyInParallel(np *NormalProg) error {
 				config.OutputMutex.Unlock()
 			}
 
-			err := updatePerThread(np)
+			err := updatePerThread(np, mtx)
 			if err != nil {
 				fmt.Printf("randomUpdate error: %v\n", err)
 				haveError = true
@@ -363,19 +379,19 @@ func updateRandomlyInParallel(np *NormalProg) error {
 				fmt.Printf("normal: Go routine %d done\n", i)
 				config.OutputMutex.Unlock()
 			}
-		}(&wg, i)
+		}(&wg, i, &mtx)
 	}
 
 	wg.Wait()
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
 	updatespersec := float64(np.Parallelism*np.loadPerThread) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nnormal: Total number of updates: %d,\n  total time: %v,\n total updates per second: %f\n\n", np.Parallelism*np.loadPerThread, totaltimeend.Sub(totaltimestart), updatespersec)
+	fmt.Printf("\nnormal: Total number of updates: %d,\n  total time: %v,\n total updates per second: %f,\n total write conflicts: %d \n\n", np.Parallelism*np.loadPerThread, totaltimeend.Sub(totaltimestart), updatespersec, writeConflictStats.numUpdateWriteConflicts)
 	if !haveError {
 		return nil
 	}
-	fmt.Printf("Error in randomRead.\n")
-	return fmt.Errorf("Error in randomRead.")
+	fmt.Printf("Error in randomUpdate.\n")
+	return fmt.Errorf("Error in randomUpdate.")
 }
 
 func readOnlyPerThread(np *NormalProg) error {

@@ -11,7 +11,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"strings"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -34,12 +34,13 @@ type NormalProg struct {
 	BatchSize   int64
 
 	// Parameters for random reads:
-	loadPerThread int64
+	LoadPerThread int64
 }
 
 type WriteConflictStats struct {
 	numUpdateWriteConflicts  int64
 	numReplaceWriteConflicts int64
+	numIdxWriteConflicts     int64
 }
 
 var writeConflictStats WriteConflictStats
@@ -68,11 +69,11 @@ func NewNormalProg(args []string) (feedlang.Program, error) {
 		Parallelism:   GetInt64Value(m, "parallelism", 16),
 		StartDelay:    GetInt64Value(m, "startDelay", 5),
 		BatchSize:     GetInt64Value(m, "batchSize", 1000),
-		loadPerThread: GetInt64Value(m, "loadPerThread", 50),
+		LoadPerThread: GetInt64Value(m, "loadPerThread", 50),
 	}
 	//maybe put these subcommands in a set-like structure
 	if np.SubCommand != "create" &&
-		np.SubCommand != "insert" && np.SubCommand != "randomRead" && np.SubCommand != "randomUpdate" && np.SubCommand != "randomReplace" {
+		np.SubCommand != "insert" && np.SubCommand != "randomRead" && np.SubCommand != "randomUpdate" && np.SubCommand != "randomReplace" && np.SubCommand != "randomIdxCreate" {
 		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
 	return np, nil
@@ -129,6 +130,18 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 	return nil
 }
 
+func (np *NormalProg) RandomIdxCreate(cl driver.Client) error {
+	config.OutputMutex.Lock()
+	fmt.Printf("\nnormal: Will perform random index creation.\n\n")
+	config.OutputMutex.Unlock()
+
+	if err := createIdxsInParallel(np); err != nil {
+		return fmt.Errorf("can not create indexes randomly")
+	}
+
+	return nil
+}
+
 func (np *NormalProg) RandomReplace(cl driver.Client) error {
 	config.OutputMutex.Lock()
 	fmt.Printf("\nnormal: Will perform random replaces.\n\n")
@@ -163,6 +176,152 @@ func (np *NormalProg) RandomRead(cl driver.Client) error {
 	}
 
 	return nil
+}
+
+func createIdxsPerThread(np *NormalProg, mtx *sync.Mutex) error {
+	// Let's use our own private client and connection here:
+	var cl driver.Client
+	var err error
+	var endpoints []string = make([]string, 0, len(config.Endpoints))
+	for _, e := range config.Endpoints {
+		endpoints = append(endpoints, e)
+	}
+	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	endpoints = endpoints[0:1] // Restrict to the first
+	config.OutputMutex.Lock()
+	fmt.Printf("Endpoints: %v\n", endpoints)
+	config.OutputMutex.Unlock()
+	if config.Jwt != "" {
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+	} else {
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+	}
+	if err != nil {
+		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
+	}
+	db, err := cl.Database(context.Background(), np.Database)
+	if err != nil {
+		return fmt.Errorf("Can not get database: %s", np.Database)
+	}
+
+	col, err := db.Collection(nil, np.Collection)
+	if err != nil {
+		fmt.Printf("randomReplace: could not open `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	ctx := context.Background()
+
+	times := make([]time.Duration, 0, np.LoadPerThread)
+	cyclestart := time.Now()
+
+	writeConflicts := int64(0)
+	idxTypes := make([]string, 0, np.LoadPerThread)
+
+	idxTypes = append(idxTypes, "persistent", "hash") // option for sorted not found
+	if np.DocConfig.WithGeo {
+		idxTypes = append(idxTypes, "geo")
+	}
+
+	idxFields := make([]string, 0, 17) // Paylaod from 1 to F + Words
+
+	for i := int64(1); i <= np.DocConfig.NumberFields; i++ {
+		idxFields = append(idxFields, "Payload"+fmt.Sprintf("%x", i))
+	}
+	/*
+		if np.DocConfig.WithGeo {
+			idxFields = append(idxFields, "Geo")
+		}
+
+	*/
+	if np.DocConfig.WithWords > 0 {
+		idxFields = append(idxFields, "Words")
+	}
+
+	for i := int64(1); i <= np.LoadPerThread; i++ {
+		randIdxType := rand.Intn(len(idxTypes))
+		var err error
+		idxName := "idx" + strconv.Itoa(int(rand.Uint32()))
+		start := time.Now()
+		if idxTypes[randIdxType] == "persistent" {
+			var options driver.EnsurePersistentIndexOptions
+			options.Name = idxName
+			_, _, err = col.EnsurePersistentIndex(ctx, idxFields, &options)
+		} else if idxTypes[randIdxType] == "hash" {
+			var options driver.EnsureHashIndexOptions
+			options.Name = idxName
+			_, _, err = col.EnsureHashIndex(ctx, idxFields, &options)
+		} else if idxTypes[randIdxType] == "geo" {
+			var options driver.EnsureGeoIndexOptions
+			options.Name = idxName
+			geoPayload := make([]string, 1)
+			geoPayload = append(geoPayload, "Geo")
+			_, _, err = col.EnsureGeoIndex(ctx, geoPayload, &options)
+		}
+		if err != nil {
+			//if there's a write/write conflict, we ignore it, but count for statistics, err is not supposed to return a write conflict, only the ErrorSlice, but doesn't hurt performance much to test it
+			if driver.IsPreconditionFailed(err) {
+				writeConflicts++
+			} else {
+				mtx.Lock()
+				writeConflictStats.numIdxWriteConflicts += writeConflicts
+				mtx.Unlock()
+				return fmt.Errorf("Can not create idxs %v\n", err)
+			}
+		}
+		times = append(times, time.Now().Sub(start))
+	}
+	totaltime := time.Now().Sub(cyclestart)
+	idxspersec := float64(np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for creating %d idxs randomly.\n  idxs per second in this go routine: %f", np.LoadPerThread, idxspersec))
+	mtx.Lock()
+	writeConflictStats.numIdxWriteConflicts += writeConflicts
+	mtx.Unlock()
+	return nil
+}
+
+func createIdxsInParallel(np *NormalProg) error {
+	totaltimestart := time.Now()
+	wg := sync.WaitGroup{}
+	haveError := false
+	var mtx sync.Mutex
+	for i := 0; i <= int(np.Parallelism)-1; i++ {
+		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
+		i := i // bring into scope
+		wg.Add(1)
+
+		go func(wg *sync.WaitGroup, i int, mtx *sync.Mutex) {
+			defer wg.Done()
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Starting go routine...\n")
+				config.OutputMutex.Unlock()
+			}
+
+			err := createIdxsPerThread(np, mtx)
+			if err != nil {
+				fmt.Printf("randomIdxCreation error: %v\n", err)
+				haveError = true
+			}
+
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Go routine %d done\n", i)
+				config.OutputMutex.Unlock()
+			}
+		}(&wg, i, &mtx)
+	}
+
+	wg.Wait()
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+	idxspersec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: Total number of idx creations: %d,\n  total time: %v,\n total idxs per second: %f,\n total write conflicts: %d \n\n", np.Parallelism*np.LoadPerThread, totaltimeend.Sub(totaltimestart), idxspersec, writeConflictStats.numIdxWriteConflicts)
+	if !haveError {
+		return nil
+	}
+	fmt.Printf("Error in randomIdxCreation.\n")
+	return fmt.Errorf("Error in randomIdxCreation.")
 }
 
 func replacePerThread(np *NormalProg, mtx *sync.Mutex) error {
@@ -204,35 +363,63 @@ func replacePerThread(np *NormalProg, mtx *sync.Mutex) error {
 		return err
 	}
 
-	times := make([]time.Duration, 0, np.loadPerThread)
-	cyclestart := time.Now()
-	fieldNewValue := map[string]interface{}{
-		"payload1": rand.Int63n(colSize),
+	var randIntId int64
+	var batchSizeLimit int64
+	if np.BatchSize > colSize {
+		batchSizeLimit = colSize
+	} else {
+		batchSizeLimit = np.BatchSize
 	}
-	for i := int64(1); i <= np.loadPerThread; i++ {
-		randIntId := rand.Int63n(colSize) + 1
+	times := make([]time.Duration, 0, np.LoadPerThread)
+	cyclestart := time.Now()
 
-		var doc datagen.Doc
-		doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
+	writeConflicts := int64(0)
+	for i := int64(1); i <= np.LoadPerThread; i++ {
+		keys := make([]string, 0, batchSizeLimit)
+		docs := make([]datagen.Doc, 0, batchSizeLimit)
 
+		source := rand.New(rand.NewSource(int64(np.LoadPerThread) + rand.Int63()))
+
+		for j := int64(1); j <= batchSizeLimit; j++ {
+			var doc datagen.Doc
+			randIntId = rand.Int63n(colSize) + 1
+			doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
+			keys = append(keys, doc.Key)
+
+			doc.FillData(&np.DocConfig, source)
+			docs = append(docs, doc)
+		}
 		start := time.Now()
-
-		//Obs.: here, we can call ReplaceDocuments() too, so we can replace an array of docs at once
-		_, err := col.ReplaceDocument(ctx, doc.Key, fieldNewValue)
-		if err != nil { //if there's a write/write conflict, we ignore it, but count for statistics
-			if strings.Contains(err.Error(), "waiting to lock key") || strings.Contains(err.Error(), "conflict") {
-				mtx.Lock()
-				writeConflictStats.numReplaceWriteConflicts++
-				mtx.Unlock()
+		_, errSlice, err := col.ReplaceDocuments(ctx, keys, docs)
+		if err != nil {
+			//if there's a write/write conflict, we ignore it, but count for statistics, err is not supposed to return a write conflict, only the ErrorSlice, but doesn't hurt performance much to test it
+			if driver.IsPreconditionFailed(err) {
+				writeConflicts++
 			} else {
-				return fmt.Errorf("Can not replace document with _key %s %v\n", doc.Key, err)
+				mtx.Lock()
+				writeConflictStats.numReplaceWriteConflicts += writeConflicts
+				mtx.Unlock()
+				return fmt.Errorf("Can not replace documents %v\n", err)
 			}
 		}
+		if errSlice != nil {
+			for _, err2 := range errSlice {
+				if err2 != nil {
+					if driver.IsPreconditionFailed(err2) {
+						writeConflicts++
+					}
+				}
+			}
+		}
+
 		times = append(times, time.Now().Sub(start))
 	}
 	totaltime := time.Now().Sub(cyclestart)
-	replacespersec := float64(np.loadPerThread) / (float64(totaltime) / float64(time.Second))
-	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for replacing %d docs randomly.\n  docs per second in this go routine: %f", np.loadPerThread, replacespersec))
+	replacespersec := float64(np.LoadPerThread) * float64(batchSizeLimit) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for replacing %d docs randomly.\n  docs per second in this go routine: %f", np.LoadPerThread*batchSizeLimit, replacespersec))
+	mtx.Lock()
+	writeConflictStats.numReplaceWriteConflicts += writeConflicts
+	mtx.Unlock()
 	return nil
 }
 
@@ -271,8 +458,9 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 	wg.Wait()
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
-	replacespersec := float64(np.Parallelism*np.loadPerThread) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nnormal: Total number of replaces: %d,\n  total time: %v,\n total replaces per second: %f,\n total write conflicts: %d \n\n", np.Parallelism*np.loadPerThread, totaltimeend.Sub(totaltimestart), replacespersec, writeConflictStats.numReplaceWriteConflicts)
+	replacespersec := float64(np.Parallelism*np.LoadPerThread*np.BatchSize) / (float64(totaltime) / float64(time.Second))
+
+	fmt.Printf("\nnormal: Total number of replaces: %d,\n  total time: %v,\n total replaces per second: %f,\n total write conflicts: %d \n\n", np.Parallelism*np.LoadPerThread*np.BatchSize, totaltimeend.Sub(totaltimestart), replacespersec, writeConflictStats.numReplaceWriteConflicts)
 	if !haveError {
 		return nil
 	}
@@ -319,34 +507,62 @@ func updatePerThread(np *NormalProg, mtx *sync.Mutex) error {
 		return err
 	}
 
-	times := make([]time.Duration, 0, np.loadPerThread)
-	cyclestart := time.Now()
-	fieldNewValue := map[string]interface{}{
-		"payload1": rand.Int63n(colSize),
+	var randIntId int64
+	var batchSizeLimit int64
+	if np.BatchSize > colSize {
+		batchSizeLimit = colSize
+	} else {
+		batchSizeLimit = np.BatchSize
 	}
-	for i := int64(1); i <= np.loadPerThread; i++ {
-		randIntId := rand.Int63n(colSize) + 1
-		var doc datagen.Doc
-		doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
+	times := make([]time.Duration, 0, np.LoadPerThread)
+	cyclestart := time.Now()
+	writeConflicts := int64(0)
+	for i := int64(1); i <= np.LoadPerThread; i++ {
+		keys := make([]string, 0, batchSizeLimit)
+		docs := make([]datagen.Doc, 0, batchSizeLimit)
+
+		source := rand.New(rand.NewSource(int64(np.LoadPerThread) + rand.Int63()))
+
+		for j := int64(1); j <= batchSizeLimit; j++ {
+			var doc datagen.Doc
+			randIntId = rand.Int63n(colSize) + 1
+			doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
+			keys = append(keys, doc.Key)
+			doc.FillData(&np.DocConfig, source)
+			docs = append(docs, doc)
+		}
 
 		start := time.Now()
 
-		//Obs.: here, we can call UpdateDocuments() too, so we can update an array of docs at once
-		_, err := col.UpdateDocument(ctx, doc.Key, fieldNewValue)
-		if err != nil { //if there's a write/write conflict, we ignore it, but count for statistics
-			if strings.Contains(err.Error(), "waiting to lock key") || strings.Contains(err.Error(), "conflict") {
-				mtx.Lock()
-				writeConflictStats.numUpdateWriteConflicts++
-				mtx.Unlock()
+		_, errSlice, err := col.UpdateDocuments(ctx, keys, docs)
+		if err != nil {
+			//if there's a write/write conflict, we ignore it, but count for statistics, err is not supposed to return a write conflict, only the ErrorSlice, but doesn't hurt performance much to test it
+			if driver.IsPreconditionFailed(err) {
+				writeConflicts++
 			} else {
-				return fmt.Errorf("Can not update document with _key %s %v\n", doc.Key, err)
+				mtx.Lock()
+				writeConflictStats.numUpdateWriteConflicts += writeConflicts
+				mtx.Unlock()
+				return fmt.Errorf("Can not update documents %v\n", err)
+			}
+		}
+		if errSlice != nil {
+			for _, err2 := range errSlice {
+				if err2 != nil {
+					if driver.IsPreconditionFailed(err2) {
+						writeConflicts++
+					}
+				}
 			}
 		}
 		times = append(times, time.Now().Sub(start))
 	}
 	totaltime := time.Now().Sub(cyclestart)
-	updatespersec := float64(np.loadPerThread) / (float64(totaltime) / float64(time.Second))
-	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for updating %d docs randomly.\n  docs per second in this go routine: %f", np.loadPerThread, updatespersec))
+	updatespersec := float64(np.LoadPerThread) * float64(batchSizeLimit) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for updating %d docs randomly.\n  docs per second in this go routine: %f", np.LoadPerThread*batchSizeLimit, updatespersec))
+	mtx.Lock()
+	writeConflictStats.numReplaceWriteConflicts += writeConflicts
+	mtx.Unlock()
 	return nil
 }
 
@@ -369,6 +585,9 @@ func updateRandomlyInParallel(np *NormalProg) error {
 			}
 
 			err := updatePerThread(np, mtx)
+			mtx.Lock()
+			writeConflictStats.numUpdateWriteConflicts++
+			mtx.Unlock()
 			if err != nil {
 				fmt.Printf("randomUpdate error: %v\n", err)
 				haveError = true
@@ -385,8 +604,8 @@ func updateRandomlyInParallel(np *NormalProg) error {
 	wg.Wait()
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
-	updatespersec := float64(np.Parallelism*np.loadPerThread) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nnormal: Total number of updates: %d,\n  total time: %v,\n total updates per second: %f,\n total write conflicts: %d \n\n", np.Parallelism*np.loadPerThread, totaltimeend.Sub(totaltimestart), updatespersec, writeConflictStats.numUpdateWriteConflicts)
+	updatespersec := float64(np.Parallelism*np.LoadPerThread*np.BatchSize) / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: Total number of updates: %d,\n  total time: %v,\n total updates per second: %f,\n total write conflicts: %d \n\n", np.Parallelism*np.LoadPerThread*np.BatchSize, totaltimeend.Sub(totaltimestart), updatespersec, writeConflictStats.numUpdateWriteConflicts)
 	if !haveError {
 		return nil
 	}
@@ -433,9 +652,9 @@ func readOnlyPerThread(np *NormalProg) error {
 		return err
 	}
 
-	times := make([]time.Duration, 0, np.loadPerThread)
+	times := make([]time.Duration, 0, np.LoadPerThread)
 	cyclestart := time.Now()
-	for i := int64(1); i <= np.loadPerThread; i++ {
+	for i := int64(1); i <= np.LoadPerThread; i++ {
 		randIntId := rand.Int63n(colSize) + 1
 
 		var doc datagen.Doc
@@ -451,8 +670,8 @@ func readOnlyPerThread(np *NormalProg) error {
 		}
 	}
 	totaltime := time.Now().Sub(cyclestart)
-	readspersec := float64(np.loadPerThread) / (float64(totaltime) / float64(time.Second))
-	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for reading %d docs randomly.\n  docs per second in this go routine: %f", np.loadPerThread, readspersec))
+	readspersec := float64(np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for reading %d docs randomly.\n  docs per second in this go routine: %f", np.LoadPerThread, readspersec))
 	return nil
 }
 
@@ -490,8 +709,8 @@ func readRandomlyInParallel(np *NormalProg) error {
 	wg.Wait()
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
-	readspersec := float64(np.Parallelism*np.loadPerThread) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nnormal: Total number of reads: %d,\n  total time: %v,\n total reads per second: %f\n\n", np.Parallelism*np.loadPerThread, totaltimeend.Sub(totaltimestart), readspersec)
+	readspersec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: Total number of reads: %d,\n  total time: %v,\n total reads per second: %f\n\n", np.Parallelism*np.LoadPerThread, totaltimeend.Sub(totaltimestart), readspersec)
 	if !haveError {
 		return nil
 	}
@@ -649,6 +868,8 @@ func (np *NormalProg) Execute() error {
 		return np.RandomUpdate(cl)
 	case "randomReplace":
 		return np.RandomReplace(cl)
+	case "randomIdxCreate":
+		return np.RandomIdxCreate(cl)
 	}
 	return nil
 }

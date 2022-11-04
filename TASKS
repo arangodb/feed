@@ -9,20 +9,21 @@ grabs the task and starts working on it.
    measurements). (Julia)
  - Implement a replace job for `normal`. (Julia)
  - Implement an update job for `normal`. (Julia)
+ - Design the interface to graph generators. (Max)
+
+ - Implement random reads from an index (with latency and throughput
+   measurements).
+ - Implement bulk reads from an index (with latency and throughput
+   measurements).
+ - Implement a job which creates a bunch of indexes on the additional fields. (Julia)
+ - Implement bulk reads on a collection (with latency and throughput
+   measurements). This is essentially an AQL read from the primary index.
 
  - Allow to distribute load across multiple coordinators (we already have
    multiple endpoints). (Max) Done, but needs further testing.
 
  - Design read load use cases.
- - Implement a job which creates a bunch of indexes on the additional fields.
  - Implement a job which creates a search view on a collection.
- - Implement bulk reads on a collection (with latency and throughput
-   measurements).
- - Implement random reads from an index (with latency and throughput
-   measurements).
- - Implement bulk reads from an index (with latency and throughput
-   measurements).
- - Design the interface to graph generators.
  - Implement a random graph use case.
  - Implement a binary tree graph generator.
  - Implement smart graph versions of the above.

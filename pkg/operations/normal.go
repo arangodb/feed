@@ -40,7 +40,6 @@ type NormalProg struct {
 type WriteConflictStats struct {
 	numUpdateWriteConflicts  int64
 	numReplaceWriteConflicts int64
-	numIdxWriteConflicts     int64
 }
 
 var writeConflictStats WriteConflictStats
@@ -215,25 +214,19 @@ func createIdxsPerThread(np *NormalProg, mtx *sync.Mutex) error {
 	times := make([]time.Duration, 0, np.LoadPerThread)
 	cyclestart := time.Now()
 
-	writeConflicts := int64(0)
 	idxTypes := make([]string, 0, np.LoadPerThread)
 
-	idxTypes = append(idxTypes, "persistent", "hash") // option for sorted not found
+	idxTypes = append(idxTypes, "persistent")
 	if np.DocConfig.WithGeo {
 		idxTypes = append(idxTypes, "geo")
 	}
 
-	idxFields := make([]string, 0, 17) // Paylaod from 1 to F + Words
+	idxFields := make([]string, 0, 17) // Paylaod from 1 to F + Words = 17
 
 	for i := int64(1); i <= np.DocConfig.NumberFields; i++ {
 		idxFields = append(idxFields, "Payload"+fmt.Sprintf("%x", i))
 	}
-	/*
-		if np.DocConfig.WithGeo {
-			idxFields = append(idxFields, "Geo")
-		}
 
-	*/
 	if np.DocConfig.WithWords > 0 {
 		idxFields = append(idxFields, "Words")
 	}
@@ -247,36 +240,22 @@ func createIdxsPerThread(np *NormalProg, mtx *sync.Mutex) error {
 			var options driver.EnsurePersistentIndexOptions
 			options.Name = idxName
 			_, _, err = col.EnsurePersistentIndex(ctx, idxFields, &options)
-		} else if idxTypes[randIdxType] == "hash" {
-			var options driver.EnsureHashIndexOptions
-			options.Name = idxName
-			_, _, err = col.EnsureHashIndex(ctx, idxFields, &options)
 		} else if idxTypes[randIdxType] == "geo" {
 			var options driver.EnsureGeoIndexOptions
 			options.Name = idxName
-			geoPayload := make([]string, 1)
+			//the method didn't accept a simple array, so has to do the following to add the field as an argument
+			geoPayload := make([]string, 0, 1)
 			geoPayload = append(geoPayload, "Geo")
 			_, _, err = col.EnsureGeoIndex(ctx, geoPayload, &options)
 		}
 		if err != nil {
-			//if there's a write/write conflict, we ignore it, but count for statistics, err is not supposed to return a write conflict, only the ErrorSlice, but doesn't hurt performance much to test it
-			if driver.IsPreconditionFailed(err) {
-				writeConflicts++
-			} else {
-				mtx.Lock()
-				writeConflictStats.numIdxWriteConflicts += writeConflicts
-				mtx.Unlock()
-				return fmt.Errorf("Can not create idxs %v\n", err)
-			}
+			return fmt.Errorf("Can not create idxs %v\n", err)
 		}
 		times = append(times, time.Now().Sub(start))
 	}
 	totaltime := time.Now().Sub(cyclestart)
 	idxspersec := float64(np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
 	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for creating %d idxs randomly.\n  idxs per second in this go routine: %f", np.LoadPerThread, idxspersec))
-	mtx.Lock()
-	writeConflictStats.numIdxWriteConflicts += writeConflicts
-	mtx.Unlock()
 	return nil
 }
 
@@ -316,7 +295,7 @@ func createIdxsInParallel(np *NormalProg) error {
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
 	idxspersec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nnormal: Total number of idx creations: %d,\n  total time: %v,\n total idxs per second: %f,\n total write conflicts: %d \n\n", np.Parallelism*np.LoadPerThread, totaltimeend.Sub(totaltimestart), idxspersec, writeConflictStats.numIdxWriteConflicts)
+	fmt.Printf("\nnormal: Total number of idx creations: %d,\n  total time: %v,\n total idxs per second: %f \n\n", np.Parallelism*np.LoadPerThread, totaltimeend.Sub(totaltimestart), idxspersec)
 	if !haveError {
 		return nil
 	}

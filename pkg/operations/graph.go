@@ -47,7 +47,7 @@ func NewGraphProg(args []string) (feedlang.Program, error) {
 		VertexCollName: GetStringValue(m, "vertexColl", "V"),
 		EdgeCollName:   GetStringValue(m, "edgeColl", "E"),
 		GraphType:      GetStringValue(m, "type", "cyclic"),
-		GraphSize:      GetInt64Value(m, "size", 2000),
+		GraphSize:      GetInt64Value(m, "graphSize", 2000),
 	}
 
 	if _, hasKey := graphSubprograms[subCmd]; !hasKey {
@@ -107,111 +107,131 @@ func (gp *GraphProg) Insert(what string) error {
 		gp.DocConfig.KeySize = 64
 	}
 
-	var gg *graphgen.GraphGenerator
+	var gg graphgen.GraphGenerator
 
 	switch gp.GraphType {
 	case "cyclic":
-		gg = graphgen.NewCyclicGraph(gp.GraphSize)
+		gg = graphgen.NewCyclicGraph(gp.GraphSize, int(gp.DocConfig.KeySize), gp.VertexCollName)
+	default:
+		return fmt.Errorf("Unknown graph type: %s", gp.GraphType)
 	}
 
-	// Number of batches to put into the collection:
-	number := gg.NumberVertices() / gp.BatchSize
-
-	config.OutputMutex.Lock()
-	fmt.Printf("\ngraph (%s): Will write %d batches of %d docs across %d goroutines...\n\n", what, number, gp.BatchSize, gp.Parallelism)
-	config.OutputMutex.Unlock()
-
 	var err error
+	var numberDocs int64
+	var numberBatches int64
+	var ch chan *datagen.Doc
 	if what == "vertices" {
-		err = database.RunParallel(gp.Parallelism, gp.StartDelay, "graph",
-			func(id int64) error {
-				return nil
-			},
-			func(totaltime time.Duration, haveError bool) {
-				batchesPerSec := float64(number) / (float64(totaltime) / float64(time.Second))
-				docspersec := float64(number*gp.BatchSize) / (float64(totaltime) / float64(time.Second))
-				config.OutputMutex.Lock()
-				fmt.Printf("\ngraph: Total number of documents written: %d,\n  total time: %v,\n  total batches per second: %f,\n  total docs per second: %f\n  had errors: %v\n\n",
-					number*gp.BatchSize, totaltime, batchesPerSec, docspersec,
-					haveError)
-				config.OutputMutex.Unlock()
-			},
-		)
+		// Number of batches to put into the collection:
+		numberDocs = gg.NumberVertices()
+		numberBatches = numberDocs / gp.BatchSize
+		ch = gg.VertexChannel()
 	} else if what == "edges" {
-		//err = RunParallel(...)
+		numberDocs = gg.NumberEdges()
+		numberBatches = numberDocs / gp.BatchSize
+		ch = gg.EdgeChannel()
 	} else {
 		return fmt.Errorf("unknown insert task %s", what)
 	}
+	gp.DocConfig.SizePerDoc = gp.DocConfig.Size / numberDocs
+
+	config.OutputMutex.Lock()
+	fmt.Printf("\ngraph (%s): Will write %d batches of %d docs across %d goroutines...\n\n", what, numberBatches, gp.BatchSize, gp.Parallelism)
+	config.OutputMutex.Unlock()
+
+	err = database.RunParallel(gp.Parallelism, gp.StartDelay, "graph",
+		func(id int64) error {
+			// Let's use our own private client and connection here:
+			cl, err := config.MakeClient()
+			if err != nil {
+				return fmt.Errorf("Can not make client: %v", err)
+			}
+			db, err := cl.Database(context.Background(), gp.Database)
+			if err != nil {
+				return fmt.Errorf("Can not get database: %s", gp.Database)
+			}
+
+			var coll driver.Collection
+			if what == "vertices" {
+				coll, err = db.Collection(nil, gp.VertexCollName)
+			} else {
+				coll, err = db.Collection(nil, gp.EdgeCollName)
+			}
+			if err != nil {
+				config.OutputMutex.Lock()
+				fmt.Printf("graph write %s: could not open `%s` collection: %v\n", what, coll.Name(), err)
+				config.OutputMutex.Unlock()
+				return err
+			}
+
+			docs := make([]datagen.Doc, 0, gp.BatchSize)
+			times := make([]time.Duration, 0, numberBatches/gp.Parallelism)
+			cyclestart := time.Now()
+			last100start := cyclestart
+
+			// It is crucial that every go routine has its own random source,
+			// otherwise we create a lot of contention.
+			source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
+
+			i := int64(0)
+			nrDocs := int64(0)
+			for done := false; !done; {
+				start := time.Now()
+				for j := int64(1); j <= gp.BatchSize; j++ {
+					doc, ok := <-ch
+					if !ok {
+						done = true
+						break
+					}
+					doc.FillData(&gp.DocConfig, source)
+					docs = append(docs, *doc)
+				}
+				if len(docs) > 0 {
+					ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Hour)
+					_, _, err := coll.CreateDocuments(ctx, docs)
+					cancel()
+					if err != nil {
+						fmt.Printf("writeSomeBatches: could not write batch: %v\n", err)
+						return err
+					}
+					nrDocs += int64(len(docs))
+				}
+				docs = docs[0:0]
+				times = append(times, time.Now().Sub(start))
+				i += 1
+				if i%100 == 0 {
+					dur := float64(time.Now().Sub(last100start)) / float64(time.Second)
+					last100start = time.Now()
+
+					// Intermediate report:
+					if config.Verbose {
+						config.OutputMutex.Lock()
+						fmt.Printf("graph: %s Have imported %d batches for id %d, last 100 took %f seconds.\n", time.Now(), int(i), id, dur)
+						config.OutputMutex.Unlock()
+					}
+				}
+			}
+
+			totaltime := time.Now().Sub(cyclestart)
+			docspersec := float64(nrDocs) / (float64(totaltime) / float64(time.Second))
+
+			WriteStatisticsForTimes(times,
+				fmt.Sprintf("\ngraph: Times for inserting %d batches.\n  docs per second in this go routine: %f", i, docspersec))
+
+			return nil
+		},
+		func(totaltime time.Duration, haveError bool) {
+			batchesPerSec := float64(numberBatches) / (float64(totaltime) / float64(time.Second))
+			docspersec := float64(numberDocs) / (float64(totaltime) / float64(time.Second))
+			config.OutputMutex.Lock()
+			fmt.Printf("\ngraph: Total number of documents written: %d,\n  total time: %v,\n  total batches per second: %f,\n  total docs per second: %f\n  had errors: %v\n\n",
+				numberDocs, totaltime, batchesPerSec, docspersec,
+				haveError)
+			config.OutputMutex.Unlock()
+		},
+	)
 	if err != nil {
 		return fmt.Errorf("can not do some batch imports for graph %s", what)
 	}
-
-	return nil
-}
-
-// writeSomeGraphBatches writes `nrBatches` batches with `batchSize` documents.
-func writeSomeGraphBatches(gp *GraphProg, nrBatches int64, id int64) error {
-	// Let's use our own private client and connection here:
-	cl, err := config.MakeClient()
-	if err != nil {
-		return fmt.Errorf("Can not make client: %v", err)
-	}
-	db, err := cl.Database(context.Background(), gp.Database)
-	if err != nil {
-		return fmt.Errorf("Can not get database: %s", gp.Database)
-	}
-
-	edges, err := db.Collection(nil, gp.Collection)
-	if err != nil {
-		fmt.Printf("writeSomeBatches: could not open `%s` collection: %v\n", gp.Collection, err)
-		return err
-	}
-
-	docs := make([]datagen.Doc, 0, gp.BatchSize)
-	times := make([]time.Duration, 0, gp.BatchSize)
-	cyclestart := time.Now()
-	last100start := cyclestart
-
-	// It is crucial that every go routine has its own random source, otherwise
-	// we create a lot of contention.
-	source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
-
-	for i := int64(1); i <= nrBatches; i++ {
-		start := time.Now()
-		for j := int64(1); j <= gp.BatchSize; j++ {
-			var doc datagen.Doc
-			doc.ShaKey((id*nrBatches+i-1)*gp.BatchSize+j-1, int(gp.DocConfig.KeySize))
-			doc.FillData(&gp.DocConfig, source)
-			docs = append(docs, doc)
-		}
-		ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Hour)
-		_, _, err := edges.CreateDocuments(ctx, docs)
-		cancel()
-		if err != nil {
-			fmt.Printf("writeSomeBatches: could not write batch: %v\n", err)
-			return err
-		}
-		docs = docs[0:0]
-		times = append(times, time.Now().Sub(start))
-		if i%100 == 0 {
-			dur := float64(time.Now().Sub(last100start)) / float64(time.Second)
-			last100start = time.Now()
-
-			// Intermediate report:
-			if config.Verbose {
-				config.OutputMutex.Lock()
-				fmt.Printf("normal: %s Have imported %d batches for id %d, last 100 took %f seconds.\n", time.Now(), int(i), id, dur)
-				config.OutputMutex.Unlock()
-			}
-		}
-	}
-
-	totaltime := time.Now().Sub(cyclestart)
-	nrDocs := gp.BatchSize * nrBatches
-	docspersec := float64(nrDocs) / (float64(totaltime) / float64(time.Second))
-
-	WriteStatisticsForTimes(times,
-		fmt.Sprintf("\nnormal: Times for inserting %d batches.\n  docs per second in this go routine: %f", nrBatches, docspersec))
 
 	return nil
 }

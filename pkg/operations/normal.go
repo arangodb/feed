@@ -42,14 +42,15 @@ type WriteConflictStats struct {
 	numReplaceWriteConflicts int64
 }
 
-var writeConflictStats WriteConflictStats
+var (
+	writeConflictStats WriteConflictStats
+	normalSubprograms  = map[string]struct{}{"create": {}, "insert": {},
+		"randomRead": {}, "randomUpdate": {}, "randomReplace": {}, "randomIdxCreate": {},
+	}
+)
 
-func NewNormalProg(args []string) (feedlang.Program, error) {
-	// This function parses the command line args and fills the values in
-	// the struct.
-	// Defaults:
-	subCmd, m := ParseArguments(args)
-	var np *NormalProg = &NormalProg{
+func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
+	return &NormalProg{
 		Database:          GetStringValue(m, "database", "_system"),
 		Collection:        GetStringValue(m, "collection", "batchimport"),
 		Drop:              GetBoolValue(m, "drop", false),
@@ -70,9 +71,15 @@ func NewNormalProg(args []string) (feedlang.Program, error) {
 		BatchSize:     GetInt64Value(m, "batchSize", 1000),
 		LoadPerThread: GetInt64Value(m, "loadPerThread", 50),
 	}
-	//maybe put these subcommands in a set-like structure
-	if np.SubCommand != "create" &&
-		np.SubCommand != "insert" && np.SubCommand != "randomRead" && np.SubCommand != "randomUpdate" && np.SubCommand != "randomReplace" && np.SubCommand != "randomIdxCreate" {
+}
+
+func NewNormalProg(args []string) (feedlang.Program, error) {
+	// This function parses the command line args and fills the values in
+	// the struct.
+	// Defaults:
+	subCmd, m := ParseArguments(args)
+	np := parseNormalArgs(subCmd, m)
+	if _, hasKey := normalSubprograms[np.SubCommand]; !hasKey {
 		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
 	return np, nil

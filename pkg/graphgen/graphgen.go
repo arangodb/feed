@@ -1,4 +1,4 @@
-package datagen
+package graphgen
 
 import (
 	// 	"crypto/sha256"

@@ -72,7 +72,7 @@ func NewNormalProg(args []string) (feedlang.Program, error) {
 	}
 	//maybe put these subcommands in a set-like structure
 	if np.SubCommand != "create" &&
-		np.SubCommand != "insert" && np.SubCommand != "randomRead" && np.SubCommand != "randomUpdate" && np.SubCommand != "randomReplace" && np.SubCommand != "randomIdxCreate" {
+		np.SubCommand != "insert" && np.SubCommand != "randomRead" && np.SubCommand != "randomUpdate" && np.SubCommand != "randomReplace" && np.SubCommand != "createIdx" {
 		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
 	return np, nil
@@ -129,13 +129,13 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 	return nil
 }
 
-func (np *NormalProg) RandomIdxCreate(cl driver.Client) error {
+func (np *NormalProg) CreateIdx(cl driver.Client) error {
 	config.OutputMutex.Lock()
-	fmt.Printf("\nnormal: Will perform random index creation.\n\n")
+	fmt.Printf("\nnormal: Will perform index creation.\n\n")
 	config.OutputMutex.Unlock()
 
-	if err := createIdxsInParallel(np); err != nil {
-		return fmt.Errorf("can not create indexes randomly")
+	if err := createIdx(np); err != nil {
+		return fmt.Errorf("can not create index")
 	}
 
 	return nil
@@ -177,7 +177,14 @@ func (np *NormalProg) RandomRead(cl driver.Client) error {
 	return nil
 }
 
-func createIdxsPerThread(np *NormalProg, mtx *sync.Mutex) error {
+func createIdx(np *NormalProg) error {
+	totaltimestart := time.Now()
+	haveError := false
+	if config.Verbose {
+		config.OutputMutex.Lock()
+		fmt.Printf("normal: Starting idxCreation...\n")
+		config.OutputMutex.Unlock()
+	}
 	// Let's use our own private client and connection here:
 	var cl driver.Client
 	var err error
@@ -205,14 +212,11 @@ func createIdxsPerThread(np *NormalProg, mtx *sync.Mutex) error {
 
 	col, err := db.Collection(nil, np.Collection)
 	if err != nil {
-		fmt.Printf("randomReplace: could not open `%s` collection: %v\n", np.Collection, err)
+		fmt.Printf("idxCreation: could not open `%s` collection: %v\n", np.Collection, err)
 		return err
 	}
 
 	ctx := context.Background()
-
-	times := make([]time.Duration, 0, np.LoadPerThread)
-	cyclestart := time.Now()
 
 	idxTypes := make([]string, 0, np.LoadPerThread)
 
@@ -224,83 +228,50 @@ func createIdxsPerThread(np *NormalProg, mtx *sync.Mutex) error {
 	idxFields := make([]string, 0, 17) // Paylaod from 1 to F + Words = 17
 
 	for i := int64(1); i <= np.DocConfig.NumberFields; i++ {
-		idxFields = append(idxFields, "Payload"+fmt.Sprintf("%x", i))
+		idxFields = append(idxFields, "payload"+fmt.Sprintf("%x", i))
 	}
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(idxFields), func(i, j int) { idxFields[i], idxFields[j] = idxFields[j], idxFields[i] })
 
-	if np.DocConfig.WithWords > 0 {
-		idxFields = append(idxFields, "Words")
-	}
-
-	for i := int64(1); i <= np.LoadPerThread; i++ {
-		randIdxType := rand.Intn(len(idxTypes))
-		var err error
-		idxName := "idx" + strconv.Itoa(int(rand.Uint32()))
-		start := time.Now()
-		if idxTypes[randIdxType] == "persistent" {
-			var options driver.EnsurePersistentIndexOptions
-			options.Name = idxName
-			_, _, err = col.EnsurePersistentIndex(ctx, idxFields, &options)
-		} else if idxTypes[randIdxType] == "geo" {
-			var options driver.EnsureGeoIndexOptions
-			options.Name = idxName
-			//the method didn't accept a simple array, so has to do the following to add the field as an argument
-			geoPayload := make([]string, 0, 1)
-			geoPayload = append(geoPayload, "Geo")
-			_, _, err = col.EnsureGeoIndex(ctx, geoPayload, &options)
+	/*
+		if np.DocConfig.WithWords > 0 {
+			idxFields = append(idxFields, "Words")
 		}
-		if err != nil {
-			return fmt.Errorf("Can not create idxs %v\n", err)
-		}
-		times = append(times, time.Now().Sub(start))
-	}
-	totaltime := time.Now().Sub(cyclestart)
-	idxspersec := float64(np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
-	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for creating %d idxs randomly.\n  idxs per second in this go routine: %f", np.LoadPerThread, idxspersec))
-	return nil
-}
+	*/
 
-func createIdxsInParallel(np *NormalProg) error {
-	totaltimestart := time.Now()
-	wg := sync.WaitGroup{}
-	haveError := false
-	var mtx sync.Mutex
-	for i := 0; i <= int(np.Parallelism)-1; i++ {
-		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
-		i := i // bring into scope
-		wg.Add(1)
-
-		go func(wg *sync.WaitGroup, i int, mtx *sync.Mutex) {
-			defer wg.Done()
-			if config.Verbose {
-				config.OutputMutex.Lock()
-				fmt.Printf("normal: Starting go routine...\n")
-				config.OutputMutex.Unlock()
-			}
-
-			err := createIdxsPerThread(np, mtx)
-			if err != nil {
-				fmt.Printf("randomIdxCreation error: %v\n", err)
-				haveError = true
-			}
-
-			if config.Verbose {
-				config.OutputMutex.Lock()
-				fmt.Printf("normal: Go routine %d done\n", i)
-				config.OutputMutex.Unlock()
-			}
-		}(&wg, i, &mtx)
+	idxName := "idx" + strconv.Itoa(int(rand.Uint32()))
+	if np.DocConfig.WithGeo {
+		var options driver.EnsureGeoIndexOptions
+		options.Name = idxName
+		//the method didn't accept a simple array, so has to do the following to add the field as an argument
+		geoPayload := make([]string, 0, 1)
+		geoPayload = append(geoPayload, "geo")
+		_, _, err = col.EnsureGeoIndex(ctx, geoPayload, &options)
+	} else {
+		var options driver.EnsurePersistentIndexOptions
+		options.Name = idxName
+		_, _, err = col.EnsurePersistentIndex(ctx, idxFields, &options)
 	}
 
-	wg.Wait()
+	if err != nil {
+		haveError = true
+	}
+
+	if config.Verbose {
+		config.OutputMutex.Lock()
+		fmt.Printf("normal: idxCreation done\n")
+		config.OutputMutex.Unlock()
+	}
+
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
-	idxspersec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nnormal: Total number of idx creations: %d,\n  total time: %v,\n total idxs per second: %f \n\n", np.Parallelism*np.LoadPerThread, totaltimeend.Sub(totaltimestart), idxspersec)
+	idxspersec := 1 / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: total time: %v,\n total idxs per second: %f \n\n", totaltimeend.Sub(totaltimestart), idxspersec)
 	if !haveError {
 		return nil
 	}
-	fmt.Printf("Error in randomIdxCreation.\n")
-	return fmt.Errorf("Error in randomIdxCreation.")
+	fmt.Printf("Error in idxCreation %v \n", err)
+	return fmt.Errorf("Error in idxCreation.")
 }
 
 func replacePerThread(np *NormalProg, mtx *sync.Mutex) error {
@@ -847,8 +818,8 @@ func (np *NormalProg) Execute() error {
 		return np.RandomUpdate(cl)
 	case "randomReplace":
 		return np.RandomReplace(cl)
-	case "randomIdxCreate":
-		return np.RandomIdxCreate(cl)
+	case "createIdx":
+		return np.CreateIdx(cl)
 	}
 	return nil
 }

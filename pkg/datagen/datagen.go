@@ -37,29 +37,31 @@ type Poly struct {
 }
 
 type Doc struct {
-	Key      string `json:"_key"`
-	Sha      string `json:"sha"`
-	Label    string `json:"label,omitempty"`
-	From     string `json:"_from,omitempty"`
-	To       string `json:"_to,omitempty"`
-	Payload0 string `json:"payload0"`
-	Payload1 string `json:"payload1,omitempty"`
-	Payload2 string `json:"payload2,omitempty"`
-	Payload3 string `json:"payload3,omitempty"`
-	Payload4 string `json:"payload4,omitempty"`
-	Payload5 string `json:"payload5,omitempty"`
-	Payload6 string `json:"payload6,omitempty"`
-	Payload7 string `json:"payload7,omitempty"`
-	Payload8 string `json:"payload8,omitempty"`
-	Payload9 string `json:"payload9,omitempty"`
-	Payloada string `json:"payloada,omitempty"`
-	Payloadb string `json:"payloadb,omitempty"`
-	Payloadc string `json:"payloadc,omitempty"`
-	Payloadd string `json:"payloadd,omitempty"`
-	Payloade string `json:"payloade,omitempty"`
-	Payloadf string `json:"payloadf,omitempty"`
-	Geo      *Poly  `Json:"geo,omitempty"`
-	Words    string `json:"words,omitempty"`
+	Key       string `json:"_key"`
+	Sha       string `json:"sha"`
+	Label     string `json:"label,omitempty"`
+	From      string `json:"_from,omitempty"`
+	To        string `json:"_to,omitempty"`
+	FromLabel string `json:"fromId,omitempty"`
+	ToLabel   string `json:"toId,omitempty"`
+	Payload0  string `json:"payload0"`
+	Payload1  string `json:"payload1,omitempty"`
+	Payload2  string `json:"payload2,omitempty"`
+	Payload3  string `json:"payload3,omitempty"`
+	Payload4  string `json:"payload4,omitempty"`
+	Payload5  string `json:"payload5,omitempty"`
+	Payload6  string `json:"payload6,omitempty"`
+	Payload7  string `json:"payload7,omitempty"`
+	Payload8  string `json:"payload8,omitempty"`
+	Payload9  string `json:"payload9,omitempty"`
+	Payloada  string `json:"payloada,omitempty"`
+	Payloadb  string `json:"payloadb,omitempty"`
+	Payloadc  string `json:"payloadc,omitempty"`
+	Payloadd  string `json:"payloadd,omitempty"`
+	Payloade  string `json:"payloade,omitempty"`
+	Payloadf  string `json:"payloadf,omitempty"`
+	Geo       *Poly  `Json:"geo,omitempty"`
+	Words     string `json:"words,omitempty"`
 }
 
 // makeRandomPolygon makes a random GeoJson polygon.
@@ -108,6 +110,14 @@ func makeRandomWords(nr int, source *rand.Rand) string {
 func KeyFromIndex(index int64) string {
 	x := fmt.Sprintf("%d", index)
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(x)))
+}
+
+func KeyFromLabel(label string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(label)))
+}
+
+func LabelFromIndex(prefix string, index uint64) string {
+	return fmt.Sprintf("%s_%d", prefix, index)
 }
 
 func (doc *Doc) ShaKey(index int64, keySize int) {
@@ -210,7 +220,7 @@ type GraphGenerator interface {
 }
 
 type Cyclic struct {
-	n int64 // Number of vertices
+	n uint64 // Number of vertices
 	V chan *Doc
 	E chan *Doc
 }
@@ -223,13 +233,13 @@ func (c *Cyclic) EdgeChannel() chan *Doc {
 	return c.E
 }
 
-func NewCyclicGraph(n int64) GraphGenerator {
+func NewCyclicGraph(n uint64) GraphGenerator {
 	// Will automatically be generated on the heap by escape analysis:
 	c := Cyclic{n: n, V: make(chan *Doc, 1000), E: make(chan *Doc, 1000)}
 
 	go func() { // Sender for vertices
 		// Has access to c because it is a closure
-		var i int64
+		var i uint64
 		for i = 1; i <= c.n; i += 1 {
 			var d Doc
 			d.Label = strconv.Itoa(int(i))
@@ -241,12 +251,12 @@ func NewCyclicGraph(n int64) GraphGenerator {
 	go func() { // Sender for edges
 		// Has access to c because it is a closure
 		var i int64
-		for i = 1; i <= c.n; i += 1 {
+		for i = 1; uint64(i) <= c.n; i += 1 {
 			var d Doc
 			d.Label = strconv.Itoa(int(i))
 			d.From = KeyFromIndex(i)
 			to := i + 1
-			if to > c.n {
+			if uint64(to) > c.n {
 				to = 1
 			}
 			d.To = KeyFromIndex(to)

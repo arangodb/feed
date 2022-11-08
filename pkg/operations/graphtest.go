@@ -2,47 +2,89 @@ package operations
 
 import (
 	"github.com/arangodb/feed/pkg/config"
-	"github.com/arangodb/feed/pkg/datagen"
 	"github.com/arangodb/feed/pkg/feedlang"
+	"github.com/arangodb/feed/pkg/graphgen"
 
 	"fmt"
+
+	// "os"
 	"strconv"
 )
 
-type TestProg struct {
-	n int64
-}
-
-func (dp *TestProg) Execute() error {
+func PrintGraph(gg graphgen.GraphGenerator) {
 	config.OutputMutex.Lock()
 	defer config.OutputMutex.Unlock()
 
-	c := datagen.NewCyclicGraph(dp.n)
-	v := c.VertexChannel()
-	for V := range v {
-		fmt.Printf("Got Vertex: %v\n", V)
+	vertexChannel := gg.VertexChannel()
+	for vertex := range vertexChannel {
+		fmt.Printf("Got Vertex: %v\n", vertex)
 	}
-	e := c.EdgeChannel()
-	for E := range e {
-		fmt.Printf("Got Edge: %v\n", E)
+	fmt.Printf("\n")
+	edgeChannel := gg.EdgeChannel()
+	for edge := range edgeChannel {
+		fmt.Printf("Got Edge: %v\n", edge)
 	}
+
+}
+
+type cycleGraphParameters graphgen.CycleGraphParameters
+
+func (cp *cycleGraphParameters) Execute() error {
+	cycleGenerator := (&graphgen.CycleGraphParameters{cp.Length}).MakeGraphGenerator()
+	PrintGraph(cycleGenerator)
 	return nil
 }
 
-func TestMaker(args []string) (feedlang.Program, error) {
-	if len(args) == 0 {
-		return nil, fmt.Errorf("Expecting one integer argument!")
-	}
-	i, err := strconv.ParseInt(args[0], 10, 0)
-	if err != nil {
-		return nil, fmt.Errorf("Could not parse integer %s: %v\n", args[0], err)
-	}
-	return &TestProg{n: i}, nil
+type pathGraphParameters graphgen.PathParameters
+
+func (pp *pathGraphParameters) Execute() error {
+	path := (&graphgen.PathParameters{pp.Length, pp.Directed, pp.Prefix}).MakeGraphGenerator()
+	graphgen.PrintGraph(&path)
+	return nil
 }
 
-func init() {
-	if feedlang.Atoms == nil {
-		feedlang.Atoms = make(map[string]feedlang.Maker, 100)
-	}
-	feedlang.Atoms["cyclic"] = TestMaker
+type ProgramParameters struct {
+	Name string   // the name of the program
+	Args []string // the parameters for the program
 }
+
+func ProduceGraphGenerator(pp ProgramParameters) (feedlang.Program, error) {
+	switch pp.Name {
+	case "cycle":
+		{
+			if len(pp.Args) == 0 {
+				return nil, fmt.Errorf("Expecting one integer argument!")
+			}
+			i, err := strconv.ParseUint(pp.Args[0], 10, 0)
+			if err != nil {
+				return nil, fmt.Errorf("Could not parse integer %s: %v\n", pp.Args, err)
+			}
+			return &cycleGraphParameters{Length: i}, nil
+		}
+	case "path":
+		{
+			if len(pp.Args) < 2 {
+				return nil, fmt.Errorf("Expecting one integer and one boolean argument!")
+			}
+			length, err := strconv.ParseUint(pp.Args[0], 10, 0)
+			if err != nil {
+				return nil, fmt.Errorf("Could not parse integer %s: %v\n", pp.Args[0], err)
+			}
+			directed, err := strconv.ParseBool(pp.Args[1])
+			if err != nil {
+				return nil, fmt.Errorf("Could not parse boolean %s: %v\n", pp.Args[1], err)
+			}
+			return &pathGraphParameters{Length: length, Directed: directed}, nil
+		}
+	default:
+		return nil, fmt.Errorf("Unknown graph type: %s\n", pp.Name)
+	}
+
+}
+
+// func init() {
+// 	if feedlang.Atoms == nil {
+// 		feedlang.Atoms = make(map[string]feedlang.Maker, 100)
+// 	}
+// 	feedlang.Atoms["cyclic"] = TestMaker
+// }

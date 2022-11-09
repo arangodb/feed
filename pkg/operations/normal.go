@@ -33,8 +33,11 @@ type NormalProg struct {
 	StartDelay  int64
 	BatchSize   int64
 
-	// Parameters for random reads:
+	// Parameters for random:
 	LoadPerThread int64
+
+	// Parameter for query on index:
+	QueryLimit int64
 }
 
 type WriteConflictStats struct {
@@ -43,6 +46,13 @@ type WriteConflictStats struct {
 }
 
 var writeConflictStats WriteConflictStats
+
+type IdxInfo struct {
+	idxName  string
+	idxAttrs []string
+}
+
+var idxsInfo []IdxInfo
 
 func NewNormalProg(args []string) (feedlang.Program, error) {
 	// This function parses the command line args and fills the values in
@@ -69,10 +79,11 @@ func NewNormalProg(args []string) (feedlang.Program, error) {
 		StartDelay:    GetInt64Value(m, "startDelay", 5),
 		BatchSize:     GetInt64Value(m, "batchSize", 1000),
 		LoadPerThread: GetInt64Value(m, "loadPerThread", 50),
+		QueryLimit:    GetInt64Value(m, "QueryLimit", 1),
 	}
 	//maybe put these subcommands in a set-like structure
 	if np.SubCommand != "create" &&
-		np.SubCommand != "insert" && np.SubCommand != "randomRead" && np.SubCommand != "randomUpdate" && np.SubCommand != "randomReplace" && np.SubCommand != "createIdx" {
+		np.SubCommand != "insert" && np.SubCommand != "randomRead" && np.SubCommand != "randomUpdate" && np.SubCommand != "randomReplace" && np.SubCommand != "createIdx" && np.SubCommand != "queryOnIdx" {
 		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
 	return np, nil
@@ -129,6 +140,18 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 	return nil
 }
 
+func (np *NormalProg) RunQueryOnIdx(cl driver.Client) error {
+	config.OutputMutex.Lock()
+	fmt.Printf("\nnormal: Will perform query on idx.\n\n")
+	config.OutputMutex.Unlock()
+
+	if err := runQueryOnIdxInParallel(np); err != nil {
+		return fmt.Errorf("can not run query on idx")
+	}
+
+	return nil
+}
+
 func (np *NormalProg) CreateIdx(cl driver.Client) error {
 	config.OutputMutex.Lock()
 	fmt.Printf("\nnormal: Will perform index creation.\n\n")
@@ -175,6 +198,110 @@ func (np *NormalProg) RandomRead(cl driver.Client) error {
 	}
 
 	return nil
+}
+
+func runQueryIdxPerThread(np *NormalProg, mtx *sync.Mutex) error {
+	// Let's use our own private client and connection here:
+	var cl driver.Client
+	var err error
+	var endpoints []string = make([]string, 0, len(config.Endpoints))
+	for _, e := range config.Endpoints {
+		endpoints = append(endpoints, e)
+	}
+	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	endpoints = endpoints[0:1] // Restrict to the first
+	config.OutputMutex.Lock()
+	fmt.Printf("Endpoints: %v\n", endpoints)
+	config.OutputMutex.Unlock()
+	if config.Jwt != "" {
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+	} else {
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+	}
+	if err != nil {
+		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
+	}
+	db, err := cl.Database(context.Background(), np.Database)
+	if err != nil {
+		return fmt.Errorf("Can not get database: %s", np.Database)
+	}
+
+	_, err = db.Collection(nil, np.Collection)
+	if err != nil {
+		fmt.Printf("query on index execution: could not open `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	ctx := context.Background()
+
+	var randIdx int64
+	times := make([]time.Duration, 0, np.LoadPerThread)
+	cyclestart := time.Now()
+
+	for i := int64(1); i <= np.LoadPerThread; i++ {
+		start := time.Now()
+		randIdx = rand.Int63n(int64(len(idxsInfo)))
+		randLength := rand.Intn(100)
+		source := rand.New(rand.NewSource(int64(np.LoadPerThread) + rand.Int63()))
+		randWord := datagen.MakeRandomStringWithSpaces(randLength, source)
+		idxAttr := idxsInfo[randIdx].idxAttrs[0]
+		queryStr := "FOR doc IN " + np.Collection + " SORT doc." + idxAttr + " FILTER doc." + idxAttr + " >= \"" + randWord + "\" LIMIT " + strconv.FormatInt(np.QueryLimit, 10) + " RETURN doc"
+		_, err = db.Query(ctx, queryStr, nil)
+
+		if err != nil {
+			return fmt.Errorf("Can not execute query on index %v\n", err)
+		}
+		times = append(times, time.Now().Sub(start))
+	}
+	totaltime := time.Now().Sub(cyclestart)
+	queriesonidxpersec := float64(np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for replacing %d docs randomly.\n  docs per second in this go routine: %f", np.LoadPerThread, queriesonidxpersec))
+	return nil
+}
+
+func runQueryOnIdxInParallel(np *NormalProg) error {
+	totaltimestart := time.Now()
+	wg := sync.WaitGroup{}
+	haveError := false
+	var mtx sync.Mutex
+	for i := 0; i <= int(np.Parallelism)-1; i++ {
+		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
+		i := i // bring into scope
+		wg.Add(1)
+
+		go func(wg *sync.WaitGroup, i int, mtx *sync.Mutex) {
+			defer wg.Done()
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Starting go routine...\n")
+				config.OutputMutex.Unlock()
+			}
+
+			err := runQueryIdxPerThread(np, mtx)
+			if err != nil {
+				fmt.Printf("query on index execution error: %v\n", err)
+				haveError = true
+			}
+
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Go routine %d done\n", i)
+				config.OutputMutex.Unlock()
+			}
+		}(&wg, i, &mtx)
+	}
+
+	wg.Wait()
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+	idxqueriespersec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+
+	fmt.Printf("\nnormal: Total number of query on index executions: %d,\n  total time: %v,\n total queries per second: %f\n\n", np.Parallelism*np.LoadPerThread, totaltimeend.Sub(totaltimestart), idxqueriespersec)
+	if !haveError {
+		return nil
+	}
+	fmt.Printf("Error in query execution.\n")
+	return fmt.Errorf("Error in query execution.")
 }
 
 func createIdx(np *NormalProg) error {
@@ -268,6 +395,11 @@ func createIdx(np *NormalProg) error {
 	idxspersec := 1 / (float64(totaltime) / float64(time.Second))
 	fmt.Printf("\nnormal: total time: %v,\n total idxs per second: %f \n\n", totaltimeend.Sub(totaltimestart), idxspersec)
 	if !haveError {
+		if np.DocConfig.WithGeo {
+			idxsInfo = append(idxsInfo, IdxInfo{idxName, []string{"geo"}})
+		} else {
+			idxsInfo = append(idxsInfo, IdxInfo{idxName, idxFields})
+		}
 		return nil
 	}
 	fmt.Printf("Error in idxCreation %v \n", err)
@@ -820,6 +952,8 @@ func (np *NormalProg) Execute() error {
 		return np.RandomReplace(cl)
 	case "createIdx":
 		return np.CreateIdx(cl)
+	case "queryOnIdx":
+		return np.RunQueryOnIdx(cl)
 	}
 	return nil
 }

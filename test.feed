@@ -1,8 +1,9 @@
 [
 normal create database=xyz collection=c numberOfShards=3 replicationFactor=3 drop=true
+normal createIdx database=xyz collection=c withGeo=false numberFields=5
 normal insert database=xyz collection=c size=100M documentSize=300 withGeo=true withWords=5 parallelism=10 numberFields=5
 normal randomRead database=xyz collection=c parallelism=10 loadPerThread=50
 normal randomUpdate database=xyz collection=c parallelism=10 loadPerThread=50
 normal randomReplace database=xyz collection=c parallelism=10 loadPerThread=50
-normal createIdx database=xyz collection=c withGeo=true numberFields=5
+normal queryOnIdx database=xyz collection=c limit=1
 ]

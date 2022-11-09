@@ -245,7 +245,7 @@ func runQueryIdxPerThread(np *NormalProg, mtx *sync.Mutex) error {
 		source := rand.New(rand.NewSource(int64(np.LoadPerThread) + rand.Int63()))
 		randWord := datagen.MakeRandomStringWithSpaces(randLength, source)
 		idxAttr := idxsInfo[randIdx].idxAttrs[0]
-		queryStr := "FOR doc IN " + np.Collection + " SORT doc." + idxAttr + " FILTER doc." + idxAttr + " >= \"" + randWord + "\" LIMIT " + strconv.FormatInt(np.QueryLimit, 10) + " RETURN doc"
+		queryStr := "FOR doc IN " + np.Collection + " SORT doc." + idxAttr + " DESC FILTER doc." + idxAttr + " >= \"" + randWord + "\" LIMIT " + strconv.FormatInt(np.QueryLimit, 10) + " RETURN doc"
 		_, err = db.Query(ctx, queryStr, nil)
 
 		if err != nil {

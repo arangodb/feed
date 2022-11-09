@@ -255,7 +255,7 @@ func runQueryIdxPerThread(np *NormalProg, mtx *sync.Mutex) error {
 	}
 	totaltime := time.Now().Sub(cyclestart)
 	queriesonidxpersec := float64(np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
-	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for replacing %d docs randomly.\n  docs per second in this go routine: %f", np.LoadPerThread, queriesonidxpersec))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for running %d on indexes randomly.\n  queries per second in this go routine: %f", np.LoadPerThread, queriesonidxpersec))
 	return nil
 }
 

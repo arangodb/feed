@@ -67,7 +67,8 @@ func addEdge(directionType *string, prefix *string, edgeIndex *uint64,
 func (t *CompleteNaryTreeParameters) MakeGraphGenerator() (GraphGenerator, error) {
 
 	if t.BranchingDegree < 2 {
-		return nil, errors.New(fmt.Sprintf("Wrong argument to tree MakeGraphGenerator: %d; it should be at least 2."))
+		return nil, errors.New(fmt.Sprintf("Wrong argument to tree MakeGraphGenerator: %d; it should be at least 2.",
+			t.BranchingDegree))
 	}
 	V := make(chan *datagen.Doc, batchSize())
 	E := make(chan *datagen.Doc, batchSize())

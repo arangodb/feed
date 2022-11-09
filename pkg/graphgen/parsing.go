@@ -135,6 +135,17 @@ func parseJSONtoGraph(f map[string]any, prefix string) (*Generatable, error) {
 					return nil, errors.New(fmt.Sprintf("Error: value of \"tree\" is not \"map[string]interface{}\" but %v", reflect.TypeOf(subtree)))
 				}
 			}
+		case "cycle":
+			{
+				switch subtree.(type) {
+				case map[string]interface{}:
+					length := uint64(subtree.(map[string]interface{})["length"].(float64))
+					var cycle Generatable = &CycleGraphParameters{length, prefix}
+					return &cycle, nil
+				default:
+					return nil, errors.New(fmt.Sprintf("Error: value of \"cycle\" is not \"map[string]interface{}\" but %v", reflect.TypeOf(subtree)))
+				}
+			}
 		default:
 			return nil, errors.New(fmt.Sprintf("Cannot parse %v", node))
 		}

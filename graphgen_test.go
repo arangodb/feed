@@ -306,3 +306,28 @@ func TestPrintReadJSONLexProdUnionTreePathTree(t *testing.T) {
 	testExpectedNumberVerticesEdges(t, gg, expectedNumberVertices,
 		expectedNumberEdges)
 }
+
+func TestPrintReadJSONCycle(t *testing.T) {
+	const filename = "cycle.json"
+	/*
+		{
+			"cycle": {"length": 5}
+		}
+	*/
+
+	buf, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		log.Panicf("Could not read from file %s, error: %v", filename, err)
+	}
+	gg, errJSON2Graph := graphgen.JSON2Graph(buf)
+	if errJSON2Graph != nil {
+		t.Error("Error in JSON2Graph: ", err)
+	}
+
+	expectedNumberVertices := uint64(5) // branchingDegree: 2, depth: 3
+	expectedNumberEdges := uint64(5)    // branchingDegree: 2, depth: 3
+
+	testExpectedNumberVerticesEdges(t, gg, expectedNumberVertices,
+		expectedNumberEdges)
+}

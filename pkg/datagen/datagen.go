@@ -38,6 +38,7 @@ type Poly struct {
 
 type Doc struct {
 	Key       string `json:"_key"`
+	Index     string `json: "index"`
 	Sha       string `json:"sha"`
 	Label     string `json:"label,omitempty"`
 	From      string `json:"_from,omitempty"`
@@ -107,7 +108,7 @@ func makeRandomWords(nr int, source *rand.Rand) string {
 	return string(b)
 }
 
-func KeyFromIndex(index int64) string {
+func KeyFromIndex(index uint64) string {
 	x := fmt.Sprintf("%d", index)
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(x)))
 }
@@ -121,7 +122,7 @@ func LabelFromIndex(prefix string, index uint64) string {
 }
 
 func (doc *Doc) ShaKey(index int64, keySize int) {
-	doc.Sha = KeyFromIndex(index)
+	doc.Sha = KeyFromIndex(uint64(index))
 	doc.Key = doc.Sha[0:keySize]
 }
 
@@ -250,7 +251,7 @@ func NewCyclicGraph(n uint64) GraphGenerator {
 
 	go func() { // Sender for edges
 		// Has access to c because it is a closure
-		var i int64
+		var i uint64
 		for i = 1; uint64(i) <= c.n; i += 1 {
 			var d Doc
 			d.Label = strconv.Itoa(int(i))

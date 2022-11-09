@@ -41,34 +41,8 @@ func (p *GraphGeneratorData) NumberEdges() uint64 {
 }
 
 type Generatable interface {
-	MakeGraphGenerator() GraphGenerator
+	MakeGraphGenerator() (GraphGenerator, error)
 }
-
-type Graph struct {
-	V              chan *datagen.Doc
-	E              chan *datagen.Doc
-	numberVertices uint64
-	numberEdges    uint64
-}
-
-func (p *Graph) VertexChannel() chan *datagen.Doc {
-	return p.V
-}
-
-func (p *Graph) EdgeChannel() chan *datagen.Doc {
-	return p.E
-}
-
-func (p *Graph) NumberVertices() uint64 {
-	return p.numberVertices
-}
-
-func (p *Graph) NumberEdges() uint64 {
-	return p.numberEdges
-}
-
-// assure *Graph implements GraphGenerator
-var _ GraphGenerator = (*Graph)(nil)
 
 func batchSize() int64 {
 	return 1000
@@ -85,17 +59,6 @@ func PrintGraph(gg *GraphGenerator) {
 	}
 }
 
-func PrintGraphProxy(gp *GraphGeneratorData) {
-	fmt.Println("Vertices:")
-	for v := range (*gp).VertexChannel() {
-		fmt.Println(v)
-	}
-	fmt.Println("Edges:")
-	for e := range (*gp).EdgeChannel() {
-		fmt.Printf("(%v,%v)\n", e.FromLabel, e.ToLabel)
-	}
-}
-
 // produce edge out of indexes and put it into the channel
 func makeEdge(prefix string, edgeIndex uint64, fromIndex uint64, toIndex uint64,
 	edgeChannel *chan *datagen.Doc) {
@@ -107,8 +70,8 @@ func makeEdge(prefix string, edgeIndex uint64, fromIndex uint64, toIndex uint64,
 		prefix += "_"
 	}
 	edge.Label = prefix + edgeIdxAsString
-	edge.From = datagen.KeyFromIndex(int64(fromIndex))
-	edge.To = datagen.KeyFromIndex(int64(toIndex))
+	edge.From = datagen.KeyFromIndex(fromIndex)
+	edge.To = datagen.KeyFromIndex(toIndex)
 	*edgeChannel <- &edge
 }
 

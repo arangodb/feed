@@ -11,7 +11,7 @@ type EdgelessGraph struct {
 	Prefix string
 }
 
-func (g EdgelessGraph) MakeGraphGenerator() GraphGeneratorData {
+func (g EdgelessGraph) MakeGraphGenerator() (GraphGenerator, error) {
 
 	V := make(chan *datagen.Doc, batchSize())
 	E := make(chan *datagen.Doc, batchSize())
@@ -25,7 +25,7 @@ func (g EdgelessGraph) MakeGraphGenerator() GraphGeneratorData {
 
 	go func() {
 		var i uint64
-		for i = 0; i <= g.Size; i += 1 {
+		for i = 0; i < g.Size; i += 1 {
 			var d datagen.Doc
 			d.Label = prefix + strconv.Itoa(int(i))
 			V <- &d
@@ -34,6 +34,6 @@ func (g EdgelessGraph) MakeGraphGenerator() GraphGeneratorData {
 
 	}()
 
-	return GraphGeneratorData{V: V, E: E,
-		numberVertices: g.Size, numberEdges: 0}
+	return &GraphGeneratorData{V: V, E: E,
+		numberVertices: g.Size, numberEdges: 0}, nil
 }

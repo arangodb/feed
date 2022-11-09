@@ -30,7 +30,10 @@ func PrintGraph(gg graphgen.GraphGenerator) {
 type cycleGraphParameters graphgen.CycleGraphParameters
 
 func (cp *cycleGraphParameters) Execute() error {
-	cycleGenerator := (&graphgen.CycleGraphParameters{cp.Length}).MakeGraphGenerator()
+	cycleGenerator, err := (&graphgen.CycleGraphParameters{cp.Length, ""}).MakeGraphGenerator()
+	if err != nil {
+		return err
+	}
 	PrintGraph(cycleGenerator)
 	return nil
 }
@@ -38,7 +41,10 @@ func (cp *cycleGraphParameters) Execute() error {
 type pathGraphParameters graphgen.PathParameters
 
 func (pp *pathGraphParameters) Execute() error {
-	path := (&graphgen.PathParameters{pp.Length, pp.Directed, pp.Prefix}).MakeGraphGenerator()
+	path, err := (&graphgen.PathParameters{pp.Length, pp.Directed, pp.Prefix}).MakeGraphGenerator()
+	if err != nil {
+		return err
+	}
 	graphgen.PrintGraph(&path)
 	return nil
 }

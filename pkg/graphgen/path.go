@@ -12,7 +12,7 @@ type PathParameters struct {
 	Prefix   string
 }
 
-func (p *PathParameters) MakeGraphGenerator() GraphGenerator {
+func (p *PathParameters) MakeGraphGenerator() (GraphGenerator, error) {
 
 	V := make(chan *datagen.Doc, batchSize())
 	E := make(chan *datagen.Doc, batchSize())
@@ -41,6 +41,14 @@ func (p *PathParameters) MakeGraphGenerator() GraphGenerator {
 		}
 		close(E)
 	}()
+
+	var numEdges uint64
+	if p.Directed {
+		numEdges = p.Length
+	} else {
+		numEdges = 2 * p.Length
+	}
+
 	return &GraphGeneratorData{V: V, E: E,
-		numberVertices: p.Length + 1, numberEdges: p.Length}
+		numberVertices: p.Length + 1, numberEdges: numEdges}, nil
 }

@@ -2,7 +2,6 @@ package graphgen
 
 import (
 	"fmt"
-	// "reflect"
 
 	"github.com/arangodb/feed/pkg/datagen"
 )
@@ -19,12 +18,18 @@ type edgeLabels struct {
 }
 
 // We assume that Right is small and wait until we obtain the whole graph Right.
-func (u LexicographicalProductParameters) MakeGraphGenerator() GraphGenerator {
+func (u LexicographicalProductParameters) MakeGraphGenerator() (GraphGenerator, error) {
 	V := make(chan *datagen.Doc, batchSize())
 	E := make(chan *datagen.Doc, batchSize())
 
-	p1 := u.Left.MakeGraphGenerator()
-	p2 := u.Right.MakeGraphGenerator()
+	p1, errLeft := u.Left.MakeGraphGenerator()
+	if errLeft != nil {
+		return nil, errLeft
+	}
+	p2, errRight := u.Right.MakeGraphGenerator()
+	if errRight != nil {
+		return nil, errRight
+	}
 
 	var edgesRight []edgeLabels
 	// read all edges from the second graph
@@ -90,5 +95,5 @@ func (u LexicographicalProductParameters) MakeGraphGenerator() GraphGenerator {
 	return &GraphGeneratorData{V: V, E: E,
 		numberVertices: p1.NumberVertices() * p2.NumberVertices(),
 		numberEdges: p1.NumberEdges()*p2.NumberVertices()*p2.NumberVertices() +
-			p1.NumberVertices()*p2.NumberEdges()}
+			p1.NumberVertices()*p2.NumberEdges()}, nil
 }

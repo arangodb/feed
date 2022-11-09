@@ -3,17 +3,13 @@ package main
 import (
 	"io/ioutil"
 	"log"
-
 	"math"
-
 	"strings"
 
-	// "reflect"
 	"testing"
 
 	"github.com/arangodb/feed/pkg/datagen"
 	"github.com/arangodb/feed/pkg/graphgen"
-	// "github.com/arangodb/feed/pkg/operations"
 )
 
 func numberElementsInChannel(c chan *datagen.Doc) (uint64, chan *datagen.Doc) {
@@ -27,121 +23,131 @@ func numberElementsInChannel(c chan *datagen.Doc) (uint64, chan *datagen.Doc) {
 	return numElements, v
 }
 
+func testExpectedNumberVerticesEdges(t *testing.T, gg graphgen.GraphGenerator,
+	expectedNumVertices uint64, expectedNumEdges uint64) {
+
+	actualNumVertices, _ := numberElementsInChannel(gg.VertexChannel())
+	obtainedNumVertices := gg.NumberVertices()
+
+	actualNumEdges, _ := numberElementsInChannel(gg.EdgeChannel())
+	obtainedNumEdges := gg.NumberEdges()
+
+	if actualNumVertices != expectedNumVertices {
+		t.Fatalf("Wrong number of vertices. Expected: %v, actual: %v",
+			expectedNumVertices, actualNumVertices)
+	}
+	if obtainedNumVertices != expectedNumVertices {
+		t.Fatalf("Wrong number of vertices. Expected: %v, obtained: %v",
+			expectedNumVertices, obtainedNumVertices)
+	}
+
+	if actualNumEdges != expectedNumEdges {
+		t.Fatalf("Wrong number of edges. Expected: %v, actual: %v",
+			expectedNumEdges, actualNumEdges)
+	}
+	if obtainedNumEdges != expectedNumEdges {
+		t.Fatalf("Wrong number of edges. Expected: %v, obtained: %v",
+			expectedNumEdges, obtainedNumEdges)
+	}
+}
+
 func TestCycleGeneration(t *testing.T) {
-	var length int = 5
-	lengthParameter := uint64(length)
-	cycleGenerator := (&graphgen.CycleGraphParameters{lengthParameter}).MakeGraphGenerator()
-
-	numVertices, _ := numberElementsInChannel(cycleGenerator.VertexChannel())
-	if numVertices != lengthParameter {
-		t.Fatalf("Wrong number of vertices. Expected: %#v, obtained: %#v",
-			length, numVertices)
+	var length uint64 = 5
+	cycleGenerator, err := (&graphgen.CycleGraphParameters{length, ""}).MakeGraphGenerator()
+	if err != nil {
+		t.Error("Error in graphgen.CycleGraphParameters: ", err)
 	}
 
-	numEdges, _ := numberElementsInChannel(cycleGenerator.EdgeChannel())
-	if numEdges != lengthParameter {
-		t.Fatalf("Wrong number of edges. Expected: %#v, obtained: %#v",
-			length, numEdges)
-	}
+	testExpectedNumberVerticesEdges(t, cycleGenerator, length, length)
 }
 
 func TestDirectedPathGeneration(t *testing.T) {
-	var length int = 5
+	var length uint64 = 5
 	var directed bool = true
-	lengthParameter := uint64(length)
-	pathGenerator := (&graphgen.PathParameters{lengthParameter, directed, ""}).MakeGraphGenerator()
-
-	numVertices, _ := numberElementsInChannel(pathGenerator.VertexChannel())
-	if numVertices != lengthParameter+1 {
-		t.Fatalf("Wrong number of vertices. Expected: %#v, obtained: %#v",
-			length+1, numVertices)
+	pathGenerator, err := (&graphgen.PathParameters{length, directed, ""}).MakeGraphGenerator()
+	if err != nil {
+		t.Error("Error in graphgen.PathParameters: ", err)
 	}
 
-	numEdges, _ := numberElementsInChannel(pathGenerator.EdgeChannel())
-	if numEdges != lengthParameter {
-		t.Fatalf("Wrong number of edges. Expected: %#v, obtained: %#v",
-			length, numEdges)
-	}
+	testExpectedNumberVerticesEdges(t, pathGenerator, length+1, length)
 }
 
 func TestUndirectedPathGeneration(t *testing.T) {
-	var length int = 5
+	var length uint64 = 5
 	var directed bool = false
-	lengthParameter := uint64(length)
-	pathGenerator := (&graphgen.PathParameters{lengthParameter, directed, ""}).MakeGraphGenerator()
-
-	numVertices, _ := numberElementsInChannel(pathGenerator.VertexChannel())
-
-	if numVertices != lengthParameter+1 {
-		t.Fatalf("Wrong number of vertices. Expected: %#v, obtained: %#v",
-			length+1, numVertices)
+	pathGenerator, err := (&graphgen.PathParameters{length, directed, ""}).MakeGraphGenerator()
+	if err != nil {
+		t.Error("Error in graphgen.PathParameters: ", err)
 	}
 
-	numEdges, _ := numberElementsInChannel(pathGenerator.EdgeChannel())
-	if numEdges != 2*lengthParameter {
-		t.Fatalf("Wrong number of edges. Expected: %#v, obtained: %#v",
-			length, numEdges)
-	}
+	testExpectedNumberVerticesEdges(t, pathGenerator, length+1, 2*length)
 }
 
 func TestPrintUnionPathPathGeneration(t *testing.T) {
-	var length int = 5
-	var directed bool = true
-	lengthParameter := uint64(length)
-	unionGenerator := graphgen.UnionParameters{
-		&graphgen.PathParameters{lengthParameter, directed, "a"},
-		&graphgen.PathParameters{lengthParameter, directed, "b"},
-		""}.MakeGraphGenerator()
-
-	// operations.PrintGraph(pathGenerator)
-	numVertices, _ := numberElementsInChannel(unionGenerator.VertexChannel())
-	expectedNumberVertices := 2 * (lengthParameter + 1)
-	if numVertices != expectedNumberVertices {
-		t.Fatalf("Wrong number of vertices. Expected: %#v, obtained: %#v",
-			expectedNumberVertices, numVertices)
-	}
-
-}
-
-func TestExpectedNumberVerticesPath(t *testing.T) {
-	var length uint64 = 3
-	pathGenerator := (&graphgen.PathParameters{length, true, ""}).MakeGraphGenerator()
-	expectedNumberVertices := pathGenerator.NumberVertices()
-	if expectedNumberVertices != length+1 {
-		t.Fatalf("Wrong number of vertices. Expected: %v, obtained: %v",
-			expectedNumberVertices, length+1)
-	}
-}
-
-func TestExpectedNumberVerticesTree(t *testing.T) {
-	var branchingDegree uint64 = 3
-	var depth uint64 = 3
-	var directionType string = "downwards"
-	var prefix string = ""
-	treeGenerator := (&graphgen.CompleteNaryTreeParameters{branchingDegree,
-		depth, directionType, prefix}).MakeGraphGenerator()
-	obtainedNumberVertices := treeGenerator.NumberVertices()
-	expectedNumberVertices := uint64(math.Pow(float64(branchingDegree), float64(depth+1)) - 1)
-	if expectedNumberVertices != obtainedNumberVertices {
-		t.Fatalf("Wrong number of vertices. Expected: %v, obtained: %v",
-			expectedNumberVertices, obtainedNumberVertices)
-	}
-}
-
-func TestExpectedNumberVerticesUnionPathPath(t *testing.T) {
 	var length uint64 = 5
 	var directed bool = true
-	unionGenerator := graphgen.UnionParameters{
+	unionGenerator, err := graphgen.UnionParameters{
 		&graphgen.PathParameters{length, directed, "a"},
 		&graphgen.PathParameters{length, directed, "b"},
 		""}.MakeGraphGenerator()
-
-	obtainedNumberVertices := unionGenerator.NumberVertices()
-	expectedNumberVertices := 2 * (length + 1)
-	if expectedNumberVertices != obtainedNumberVertices {
-		t.Fatalf("Wrong number of vertices. Expected: %v, obtained: %v",
-			expectedNumberVertices, obtainedNumberVertices)
+	if err != nil {
+		t.Error("Error in graphgen.UnionParameters: ", err)
 	}
+
+	testExpectedNumberVerticesEdges(t, unionGenerator, 2*(length+1), 2*length)
+}
+
+func TestDirectedTreeGeneration(t *testing.T) {
+	var branchingDegree uint64 = 3
+	var depth uint64 = 2
+	var directionType string = "downwards"
+	var prefix string = ""
+	treeGenerator, err := (&graphgen.CompleteNaryTreeParameters{branchingDegree,
+		depth, directionType, prefix}).MakeGraphGenerator()
+	if err != nil {
+		t.Error("Error in graphgen.CompleteNaryTreeParameters: ", err)
+	}
+
+	expectedNumberVertices := uint64(
+		(math.Pow(float64(branchingDegree), float64(depth+1)) - float64(1)) / float64(branchingDegree-1))
+
+	testExpectedNumberVerticesEdges(t, treeGenerator, expectedNumberVertices,
+		expectedNumberVertices-1)
+}
+
+func TestUndirectedTreeGeneration(t *testing.T) {
+	var branchingDegree uint64 = 3
+	var depth uint64 = 2
+	var directionType string = "bidirected"
+	var prefix string = ""
+	treeGenerator, err := (&graphgen.CompleteNaryTreeParameters{branchingDegree,
+		depth, directionType, prefix}).MakeGraphGenerator()
+	if err != nil {
+		t.Error("Error in graphgen.CompleteNaryTreeParameters: ", err)
+	}
+
+	expectedNumberVertices := uint64(
+		(math.Pow(float64(branchingDegree), float64(depth+1)) - float64(1)) / float64(branchingDegree-1))
+
+	testExpectedNumberVerticesEdges(t, treeGenerator, expectedNumberVertices,
+		2*(expectedNumberVertices-1))
+}
+
+func TestUnionPathPathGeneration(t *testing.T) {
+	var length uint64 = 5
+	var directed bool = true
+	unionGenerator, err := graphgen.UnionParameters{
+		&graphgen.PathParameters{length, directed, "a"},
+		&graphgen.PathParameters{length, directed, "b"},
+		""}.MakeGraphGenerator()
+	if err != nil {
+		t.Error("Error in graphgen.UnionParameters or in graphgen.PathParameters: ", err)
+	}
+
+	expectedNumberVertices := 2 * (length + 1)
+	expectedNumberEdges := 2 * length
+	testExpectedNumberVerticesEdges(t, unionGenerator, expectedNumberVertices,
+		expectedNumberEdges)
 }
 
 func TestTreeHasNo__(t *testing.T) {
@@ -149,8 +155,11 @@ func TestTreeHasNo__(t *testing.T) {
 	var depth uint64 = 3
 	var directionType string = "downwards"
 	var prefix string = ""
-	treeGenerator := (&graphgen.CompleteNaryTreeParameters{branchingDegree,
+	treeGenerator, err := (&graphgen.CompleteNaryTreeParameters{branchingDegree,
 		depth, directionType, prefix}).MakeGraphGenerator()
+	if err != nil {
+		t.Error("Error in graphgen.CompleteNaryTreeParameters: ", err)
+	}
 
 	count := 0
 	for v := range treeGenerator.VertexChannel() {
@@ -166,7 +175,10 @@ func TestPathHasNo__(t *testing.T) {
 	var length uint64 = 1
 	var directed bool = true
 	var prefix string = ""
-	pathGenerator := (&graphgen.PathParameters{length, directed, prefix}).MakeGraphGenerator()
+	pathGenerator, err := (&graphgen.PathParameters{length, directed, prefix}).MakeGraphGenerator()
+	if err != nil {
+		t.Error("Error in graphgen.PathParameters: ", err)
+	}
 
 	count := 0
 	for v := range pathGenerator.VertexChannel() {
@@ -181,10 +193,13 @@ func TestPathHasNo__(t *testing.T) {
 func TestUnionHasNo__(t *testing.T) {
 	var length uint64 = 5
 	var directed bool = true
-	unionGenerator := graphgen.UnionParameters{
+	unionGenerator, err := graphgen.UnionParameters{
 		&graphgen.PathParameters{length, directed, "a"},
 		&graphgen.PathParameters{length, directed, "b"},
 		""}.MakeGraphGenerator()
+	if err != nil {
+		t.Error("Error in graphgen.UnionParameters: ", err)
+	}
 
 	count := 0
 	for v := range unionGenerator.VertexChannel() {
@@ -199,10 +214,13 @@ func TestUnionHasNo__(t *testing.T) {
 func TestLexProductHasNo__(t *testing.T) {
 	var length uint64 = 5
 	directed := true
-	lpGenerator := graphgen.LexicographicalProductParameters{
+	lpGenerator, err := graphgen.LexicographicalProductParameters{
 		&graphgen.PathParameters{length, directed, "a"},
 		&graphgen.PathParameters{length, directed, "b"},
 		""}.MakeGraphGenerator()
+	if err != nil {
+		t.Error("Error in graphgen.LexicographicalProductParameters or in graphgen.PathParameters: ", err)
+	}
 
 	count := 0
 	for v := range lpGenerator.VertexChannel() {
@@ -214,108 +232,77 @@ func TestLexProductHasNo__(t *testing.T) {
 	}
 }
 
-func TestExpectedNumberVerticesLexProdPathPath(t *testing.T) {
+func TestLexProdPathPathGenerator(t *testing.T) {
 	var length uint64 = 2
 	var directed bool = true
-	lpGenerator := graphgen.LexicographicalProductParameters{
+	lpGenerator, err := graphgen.LexicographicalProductParameters{
 		&graphgen.PathParameters{length, directed, "a"},
 		&graphgen.PathParameters{length, directed, "b"},
 		""}.MakeGraphGenerator()
+	if err != nil {
+		t.Error("Error in graphgen.LexicographicalProductParameters or in graphgen.PathParameters: ", err)
+	}
 
 	expectedNumberVertices := (length + 1) * (length + 1)
+	expectedNumberEdges := (length+1)*length /*within super-vertices*/ +
+		length*(length+1)*(length+1) /*between super-vertices*/
 
-	actualNumberVertices, _ := numberElementsInChannel(lpGenerator.VertexChannel())
-	if expectedNumberVertices != actualNumberVertices {
-		t.Fatalf("Wrong number of vertices. Expected: %v, obtained: %v",
-			expectedNumberVertices, actualNumberVertices)
-	}
+	testExpectedNumberVerticesEdges(t, lpGenerator, expectedNumberVertices,
+		expectedNumberEdges)
 
-	obtainedNumberVertices := lpGenerator.NumberVertices()
-	if expectedNumberVertices != obtainedNumberVertices {
-		t.Fatalf("Wrong number of vertices. Expected: %v, obtained: %v",
-			expectedNumberVertices, obtainedNumberVertices)
-	}
 }
 
 func TestPrintReadJSONTree(t *testing.T) {
 	const filename = "tree.json"
+	/*
+		{
+			"tree": {"branchingDegree": 2, "depth": 3, "directionType": "downwards"}
+		}
+	*/
 	buf, err := ioutil.ReadFile(filename)
 
 	if err != nil {
 		log.Panicf("Could not read from file %s, error: %v", filename, err)
 	}
-	gg := graphgen.JSON2Graph(buf)
-	actualNumVertices, _ := numberElementsInChannel(gg.VertexChannel())
-	obtainedNumberVertices := gg.NumberVertices()
+	gg, err := graphgen.JSON2Graph(buf)
+	if err != nil {
+		t.Error("Error in JSON2Graph: ", err)
+	}
+
 	expectedNumberVertices := uint64(15) // branchingDegree: 2, depth: 3
-
-	actualNumEdges, _ := numberElementsInChannel(gg.EdgeChannel())
-	obtainedNumEdges := gg.NumberEdges()
-	expectedNumEdges := uint64(14) // branchingDegree: 2, depth: 3
-
-	if actualNumVertices != expectedNumberVertices {
-		t.Fatalf("Wrong number of vertices. Expected: %v, actual: %v",
-			expectedNumberVertices, actualNumVertices)
-	}
-	if obtainedNumberVertices != expectedNumberVertices {
-		t.Fatalf("Wrong number of vertices. Expected: %v, obtained: %v",
-			expectedNumberVertices, obtainedNumberVertices)
-	}
-
-	if actualNumEdges != expectedNumEdges {
-		t.Fatalf("Wrong number of edges. Expected: %v, actual: %v",
-			expectedNumEdges, actualNumEdges)
-	}
-	if obtainedNumEdges != expectedNumEdges {
-		t.Fatalf("Wrong number of edges. Expected: %v, obtained: %v",
-			expectedNumEdges, obtainedNumEdges)
-	}
+	expectedNumberEdges := uint64(14)    // branchingDegree: 2, depth: 3
+	testExpectedNumberVerticesEdges(t, gg, expectedNumberVertices,
+		expectedNumberEdges)
 
 }
 
 func TestPrintReadJSONLexProdUnionTreePathTree(t *testing.T) {
 	const filename = "lexProdUnionTreePathTree.json"
-	// {
-	// "lexProduct": [
-	// 	{"union": [
-	// 		{"tree": {"branchingDegree": 2, "depth": 1, "directionType": "downwards"}},
-	// 		{"path": {"length": 3, "directed": true}}
-	// 	]},
-	// 	{"tree": {"branchingDegree": 2, "depth": 1, "directionType": "upwards"}}
-	// ]
+	/*
+		{"lexProduct": [
+			{"union": [
+				{"tree": {"branchingDegree": 2, "depth": 1, "directionType": "downwards"}},
+				{"path": {"length": 3, "directed": true}}
+			]},
+			{"tree": {"branchingDegree": 2, "depth": 1, "directionType": "upwards"}}
+		]
 
-	// }
+		}
+	*/
 
 	buf, err := ioutil.ReadFile(filename)
 
 	if err != nil {
 		log.Panicf("Could not read from file %s, error: %v", filename, err)
 	}
-	gg := graphgen.JSON2Graph(buf)
+	gg, errJSON2Graph := graphgen.JSON2Graph(buf)
+	if errJSON2Graph != nil {
+		t.Error("Error in JSON2Graph: ", err)
+	}
 
-	actualNumVertices, _ := numberElementsInChannel(gg.VertexChannel())
-	obtainedNumberVertices := gg.NumberVertices()
 	expectedNumberVertices := uint64(21) // branchingDegree: 2, depth: 3
+	expectedNumberEdges := uint64(59)    // branchingDegree: 2, depth: 3
 
-	actualNumEdges, _ := numberElementsInChannel(gg.EdgeChannel())
-	obtainedNumEdges := gg.NumberEdges()
-	expectedNumEdges := uint64(59) // branchingDegree: 2, depth: 3
-
-	if actualNumVertices != expectedNumberVertices {
-		t.Fatalf("Wrong number of vertices. Expected: %v, actual: %v",
-			expectedNumberVertices, actualNumVertices)
-	}
-	if obtainedNumberVertices != expectedNumberVertices {
-		t.Fatalf("Wrong number of vertices. Expected: %v, obtained: %v",
-			expectedNumberVertices, obtainedNumberVertices)
-	}
-
-	if actualNumEdges != expectedNumEdges {
-		t.Fatalf("Wrong number of edges. Expected: %v, actual: %v",
-			expectedNumEdges, actualNumEdges)
-	}
-	if obtainedNumEdges != expectedNumEdges {
-		t.Fatalf("Wrong number of edges. Expected: %v, obtained: %v",
-			expectedNumEdges, obtainedNumEdges)
-	}
+	testExpectedNumberVerticesEdges(t, gg, expectedNumberVertices,
+		expectedNumberEdges)
 }

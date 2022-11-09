@@ -144,7 +144,7 @@ func parseJSONtoGraph(f map[string]any, prefix string) (*Generatable, error) {
 	return nil, errors.New("We should not end up here. Probably forgot to return from the previous switch.")
 }
 
-func JSON2Graph(jsonGraph []byte) GraphGenerator {
+func JSON2Graph(jsonGraph []byte) (GraphGenerator, error) {
 	var f map[string]any
 	err := json.Unmarshal(jsonGraph, &f)
 	if err != nil {
@@ -154,6 +154,9 @@ func JSON2Graph(jsonGraph []byte) GraphGenerator {
 	if err != nil {
 		log.Printf("Could not produce a graph generator from the given JSON, error: %v", err)
 	}
-	gg := (*generatable).MakeGraphGenerator()
-	return gg
+	gg, err := (*generatable).MakeGraphGenerator()
+	if err != nil {
+		return nil, err
+	}
+	return gg, nil
 }

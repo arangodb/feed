@@ -1,6 +1,8 @@
 package graphgen
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"strconv"
 
@@ -44,8 +46,29 @@ func popLabel(labelPtr *[]uint64) uint64 {
 	return result
 }
 
-func (t *CompleteNaryTreeParameters) MakeGraphGenerator() GraphGenerator {
+func addEdge(directionType *string, prefix *string, edgeIndex *uint64,
+	fromLabel *string, toLabel *string, e chan *datagen.Doc) {
 
+	switch *directionType {
+	case "downwards":
+		makeEdgeString(*prefix, *edgeIndex, fromLabel, toLabel, &e)
+	case "upwards":
+		makeEdgeString(*prefix, *edgeIndex, toLabel, fromLabel, &e)
+	case "bidirected":
+		{
+			makeEdgeString(*prefix, *edgeIndex, fromLabel, toLabel, &e)
+			*edgeIndex++
+			makeEdgeString(*prefix, *edgeIndex, toLabel, fromLabel, &e)
+		}
+	}
+
+}
+
+func (t *CompleteNaryTreeParameters) MakeGraphGenerator() (GraphGenerator, error) {
+
+	if t.BranchingDegree < 2 {
+		return nil, errors.New(fmt.Sprintf("Wrong argument to tree MakeGraphGenerator: %d; it should be at least 2."))
+	}
 	V := make(chan *datagen.Doc, batchSize())
 	E := make(chan *datagen.Doc, batchSize())
 
@@ -68,7 +91,7 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator() GraphGenerator {
 			// edge (eps, first)
 			fromLabel := "eps"
 			toLabel := labelToString(&label)
-			makeEdgeString(t.Prefix, edgeIndex, &fromLabel, &toLabel, &E)
+			addEdge(&t.DirectionType, &t.Prefix, &edgeIndex, &fromLabel, &toLabel, E)
 			edgeIndex++
 			var current uint64 = 0
 			for len(label) > int(0) {
@@ -85,7 +108,7 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator() GraphGenerator {
 				label = append(label, current)
 				toLabel := labelToString(&label)
 				putVertextoChannel(V, &label, t.Prefix)
-				makeEdgeString(t.Prefix, edgeIndex, &fromLabel, &toLabel, &E)
+				addEdge(&t.DirectionType, &t.Prefix, &edgeIndex, &fromLabel, &toLabel, E)
 				edgeIndex++
 				current = 0
 			}
@@ -94,10 +117,14 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator() GraphGenerator {
 		close(E)
 	}()
 
-	numVertices := uint64(math.Pow(float64(t.BranchingDegree),
-		float64(t.Depth+1)) - 1)
+	numVertices := uint64((math.Pow(float64(t.BranchingDegree),
+		float64(t.Depth+1)) - float64(1)) / float64(t.BranchingDegree-1))
+
 	numEdges := numVertices - 1
+	if t.DirectionType == "bidirected" {
+		numEdges = numEdges * 2
+	}
 	return &GraphGeneratorData{V: V, E: E,
 		numberVertices: numVertices,
-		numberEdges:    numEdges}
+		numberEdges:    numEdges}, nil
 }

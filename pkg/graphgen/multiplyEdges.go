@@ -10,19 +10,22 @@ type MultiplyEdges struct {
 	Prefix  string
 }
 
-func (m MultiplyEdges) MakeGraphGenerator() GraphGeneratorData {
+func (m MultiplyEdges) MakeGraphGenerator() (GraphGenerator, error) {
 	E := make(chan *datagen.Doc, batchSize())
 
-	proxy := m.Operand.MakeGraphGenerator()
+	gg, err := m.Operand.MakeGraphGenerator()
+	if err != nil {
+		return nil, err
+	}
 	go func() {
-		for e := range proxy.EdgeChannel() {
+		for e := range gg.EdgeChannel() {
 			for i := 0; i < int(m.Factor); i++ {
 				E <- e
 			}
 		}
 		close(E)
 	}()
-	return GraphGeneratorData{V: proxy.VertexChannel(), E: E,
-		numberVertices: proxy.NumberVertices(),
-		numberEdges:    proxy.NumberEdges() * m.Factor}
+	return &GraphGeneratorData{V: gg.VertexChannel(), E: E,
+		numberVertices: gg.NumberVertices(),
+		numberEdges:    gg.NumberEdges() * m.Factor}, nil
 }

@@ -12,12 +12,18 @@ type UnionParameters struct {
 	Prefix string
 }
 
-func (u UnionParameters) MakeGraphGenerator() GraphGenerator {
+func (u UnionParameters) MakeGraphGenerator() (GraphGenerator, error) {
 	V := make(chan *datagen.Doc, batchSize())
 	E := make(chan *datagen.Doc, batchSize())
 
-	p1 := u.Left.MakeGraphGenerator()
-	p2 := u.Right.MakeGraphGenerator()
+	p1, errLeft := u.Left.MakeGraphGenerator()
+	if errLeft != nil {
+		return nil, errLeft
+	}
+	p2, errRight := u.Right.MakeGraphGenerator()
+	if errRight != nil {
+		return nil, errRight
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -65,5 +71,5 @@ func (u UnionParameters) MakeGraphGenerator() GraphGenerator {
 
 	return &GraphGeneratorData{V: V, E: E,
 		numberVertices: p1.NumberVertices() + p2.NumberVertices(),
-		numberEdges:    p1.NumberEdges() + p2.NumberEdges()}
+		numberEdges:    p1.NumberEdges() + p2.NumberEdges()}, nil
 }

@@ -30,7 +30,7 @@ func PrintGraph(gg graphgen.GraphGenerator) {
 type cycleGraphParameters graphgen.CycleGraphParameters
 
 func (cp *cycleGraphParameters) Execute() error {
-	cycleGenerator, err := (&graphgen.CycleGraphParameters{cp.Length, ""}).MakeGraphGenerator()
+	cycleGenerator, err := (&graphgen.CycleGraphParameters{cp.Length, "", 0}).MakeGraphGenerator()
 	if err != nil {
 		return err
 	}

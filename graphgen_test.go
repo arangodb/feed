@@ -53,7 +53,7 @@ func testExpectedNumberVerticesEdges(t *testing.T, gg graphgen.GraphGenerator,
 
 func TestCycleGeneration(t *testing.T) {
 	var length uint64 = 5
-	cycleGenerator, err := (&graphgen.CycleGraphParameters{length, ""}).MakeGraphGenerator()
+	cycleGenerator, err := (&graphgen.CycleGraphParameters{length, "", 0}).MakeGraphGenerator()
 	if err != nil {
 		t.Error("Error in graphgen.CycleGraphParameters: ", err)
 	}

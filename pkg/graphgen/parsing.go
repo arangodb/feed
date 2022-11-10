@@ -149,7 +149,7 @@ func parseJSONtoGraph(f map[string]any, prefix string, numVertices uint64) (*Gen
 		case "cycle":
 			{
 				length := uint64(subtree.(map[string]interface{})["length"].(float64))
-				var cycle Generatable = &CycleGraphParameters{length, prefix}
+				var cycle Generatable = &CycleGraphParameters{length, prefix, numVertices}
 				return &cycle, length, nil
 			}
 		default:

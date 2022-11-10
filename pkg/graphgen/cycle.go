@@ -7,8 +7,9 @@ import (
 )
 
 type CycleGraphParameters struct {
-	Length uint64
-	Prefix string
+	Length     uint64
+	Prefix     string
+	StartIndex uint64
 }
 
 func (c *CycleGraphParameters) MakeGraphGenerator() (GraphGenerator, error) {

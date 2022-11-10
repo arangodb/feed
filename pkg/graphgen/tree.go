@@ -118,6 +118,7 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator() (GraphGenerator, error
 		close(E)
 	}()
 
+	// todo: implement Pow for uint
 	numVertices := uint64((math.Pow(float64(t.BranchingDegree),
 		float64(t.Depth+1)) - float64(1)) / float64(t.BranchingDegree-1))
 

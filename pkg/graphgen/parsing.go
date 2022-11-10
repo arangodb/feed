@@ -66,68 +66,68 @@ func checkSubtreeInput(jsonNodeName *string, subtree *interface{}) error {
 
 //func getLeftRight(subtree *interface)
 
-func parseJSONtoGraph(f map[string]any, prefix string) (*Generatable, error) {
+func parseJSONtoGraph(f map[string]any, prefix string, numVertices uint64) (*Generatable, uint64, error) {
 	if prefix != "" {
 		prefix += "_"
 	}
 	for jsonNodeName, subtree := range f {
 		err := checkSubtreeInput(&jsonNodeName, &subtree)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		switch jsonNodeName {
 		case "union":
 			{
 				left := subtree.([]interface{})[0]
 				leftChild := left.(map[string]any)
-				ggLeft, err := parseJSONtoGraph(leftChild, prefix+"a")
+				ggLeft, numVerticesLeft, err := parseJSONtoGraph(leftChild, prefix+"a", numVertices)
 				if err != nil {
-					return nil,
+					return nil, 0,
 						errors.New(fmt.Sprintf("Could not construct graph from %v",
 							leftChild))
 				}
 
 				right := subtree.([]interface{})[1]
 				rightChild := right.(map[string]any)
-				ggRight, err := parseJSONtoGraph(rightChild, prefix+"b")
+				ggRight, numVerticesRight, err := parseJSONtoGraph(rightChild, prefix+"b", numVertices+numVerticesLeft)
 				if err != nil {
-					return nil,
+					return nil, 0,
 						errors.New(fmt.Sprintf("Could not construct graph from %v",
 							rightChild))
 				}
 
-				var u Generatable = UnionParameters{*ggLeft, *ggRight, prefix}
-				return &u, nil
+				var u Generatable = UnionParameters{*ggLeft, *ggRight, prefix, numVertices}
+				return &u, numVertices + numVerticesLeft + numVerticesRight, nil
 			}
 		case "lexProduct":
 			{
 				left := subtree.([]interface{})[0]
 				leftChild := left.(map[string]any)
-				ggLeft, err := parseJSONtoGraph(leftChild, prefix+"a")
+				ggLeft, numVerticesLeft, err := parseJSONtoGraph(leftChild, prefix+"a", numVertices)
 				if err != nil {
-					return nil,
+					return nil, 0,
 						errors.New(fmt.Sprintf("Could not construct graph from %v",
 							leftChild))
 				}
 
 				right := subtree.([]interface{})[1]
 				rightChild := right.(map[string]any)
-				ggRight, err := parseJSONtoGraph(rightChild, prefix+"b")
+				ggRight, numVerticesRight, err := parseJSONtoGraph(rightChild, prefix+"b", numVertices+numVerticesLeft)
 				if err != nil {
-					return nil,
+					return nil, 0,
 						errors.New(fmt.Sprintf("Could not construct graph from %v",
 							rightChild))
 				}
-				var lp Generatable = LexicographicalProductParameters{*ggLeft, *ggRight, prefix}
-				return &lp, nil
+				var lp Generatable = LexicographicalProductParameters{*ggLeft, *ggRight, prefix, numVertices}
+				return &lp, numVertices + numVerticesLeft + numVerticesRight, nil
 			}
 
 		case "path":
 			{
 				length := uint64(subtree.(map[string]interface{})["length"].(float64)) // unmarshalling can only give float, never int
 				directed := subtree.(map[string]interface{})["directed"].(bool)
-				var path Generatable = &PathParameters{length, directed, prefix}
-				return &path, nil
+				var path Generatable = &PathParameters{length, directed, prefix, numVertices}
+				return &path, length + 1, nil
 			}
 		case "tree":
 			{
@@ -136,27 +136,28 @@ func parseJSONtoGraph(f map[string]any, prefix string) (*Generatable, error) {
 				directionType := subtree.(map[string]interface{})["directionType"].(string)
 				if directionType != "downwards" &&
 					directionType != "upwards" && directionType != "bidirected" {
-					return nil, errors.New(fmt.Sprintf(
+					return nil, 0, errors.New(fmt.Sprintf(
 						"Error: value of \"tree.directionType\" shold "+
 							"be one of \"downwards\", \"upwards\", \"bidirected\", "+
 							", but it is %v", directionType))
 				}
-				var tree Generatable = &CompleteNaryTreeParameters{branchingDegree, depth, directionType, prefix}
-				return &tree, nil
+				var tree Generatable = &CompleteNaryTreeParameters{
+					branchingDegree, depth, directionType, prefix, numVertices}
+				return &tree, tree.(*CompleteNaryTreeParameters).NumVertices(), nil
 
 			}
 		case "cycle":
 			{
 				length := uint64(subtree.(map[string]interface{})["length"].(float64))
 				var cycle Generatable = &CycleGraphParameters{length, prefix}
-				return &cycle, nil
+				return &cycle, length, nil
 			}
 		default:
-			return nil, errors.New(fmt.Sprintf("Cannot parse %v", jsonNodeName))
+			return nil, 0, errors.New(fmt.Sprintf("Cannot parse %v", jsonNodeName))
 		}
 
 	}
-	return nil, errors.New("We should not end up here. Probably forgot to return from the previous switch.")
+	return nil, 0, errors.New("We should not end up here. Probably forgot to return from the previous switch.")
 }
 
 func JSON2Graph(jsonGraph []byte) (GraphGenerator, error) {
@@ -165,7 +166,7 @@ func JSON2Graph(jsonGraph []byte) (GraphGenerator, error) {
 	if err != nil {
 		log.Fatalf("Could not parse input graph: %v", jsonGraph)
 	}
-	generatable, err := parseJSONtoGraph(f, "")
+	generatable, _, err := parseJSONtoGraph(f, "", 0)
 	if err != nil {
 		log.Printf("Could not produce a graph generator from the given JSON, error: %v", err)
 	}

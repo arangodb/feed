@@ -7,9 +7,10 @@ import (
 )
 
 type UnionParameters struct {
-	Left   Generatable
-	Right  Generatable
-	Prefix string
+	Left       Generatable
+	Right      Generatable
+	Prefix     string
+	StartIndex uint64
 }
 
 func (u UnionParameters) MakeGraphGenerator() (GraphGenerator, error) {

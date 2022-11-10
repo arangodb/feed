@@ -14,6 +14,13 @@ type CompleteNaryTreeParameters struct {
 	Depth           uint64 // length (number of edges) of a path from the root to a leaf
 	DirectionType   string // "downwards" (from the root) , "upwards" (to the root), "bidirected"
 	Prefix          string
+	StartIndex      uint64
+}
+
+func (t *CompleteNaryTreeParameters) NumVertices() uint64 {
+	// todo: implement Pow for uint
+	return uint64((math.Pow(float64(t.BranchingDegree),
+		float64(t.Depth+1)) - float64(1)) / float64(t.BranchingDegree-1))
 }
 
 func labelToString(label *[]uint64) string {
@@ -118,10 +125,7 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator() (GraphGenerator, error
 		close(E)
 	}()
 
-	// todo: implement Pow for uint
-	numVertices := uint64((math.Pow(float64(t.BranchingDegree),
-		float64(t.Depth+1)) - float64(1)) / float64(t.BranchingDegree-1))
-
+	numVertices := t.NumVertices()
 	numEdges := numVertices - 1
 	if t.DirectionType == "bidirected" {
 		numEdges = numEdges * 2

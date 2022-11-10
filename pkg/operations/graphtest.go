@@ -41,7 +41,8 @@ func (cp *cycleGraphParameters) Execute() error {
 type pathGraphParameters graphgen.PathParameters
 
 func (pp *pathGraphParameters) Execute() error {
-	path, err := (&graphgen.PathParameters{pp.Length, pp.Directed, pp.Prefix}).MakeGraphGenerator()
+	path, err := (&graphgen.PathParameters{
+		pp.Length, pp.Directed, pp.Prefix, pp.StartIndex}).MakeGraphGenerator()
 	if err != nil {
 		return err
 	}

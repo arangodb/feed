@@ -7,9 +7,10 @@ import (
 )
 
 type PathParameters struct {
-	Length   uint64 // number of edges
-	Directed bool
-	Prefix   string
+	Length     uint64 // number of edges
+	Directed   bool
+	Prefix     string
+	StartIndex uint64
 }
 
 func (p *PathParameters) MakeGraphGenerator() (GraphGenerator, error) {

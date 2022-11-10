@@ -7,9 +7,10 @@ import (
 )
 
 type LexicographicalProductParameters struct {
-	Left   Generatable
-	Right  Generatable
-	Prefix string
+	Left       Generatable
+	Right      Generatable
+	Prefix     string
+	StartIndex uint64
 }
 
 type edgeLabels struct {

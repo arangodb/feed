@@ -12,4 +12,5 @@ var (
 	Password    string
 	ProgName    string
 	OutputMutex sync.Mutex
+	Protocol    string
 )

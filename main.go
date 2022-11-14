@@ -27,7 +27,7 @@ func init() {
 	flags.StringVar(&config.Jwt, "jwt", "", "Verbose output")
 	flags.StringVar(&config.Username, "username", "root", "User name for database access.")
 	flags.StringVar(&config.Password, "password", "", "Password for database access.")
-	flags.StringVar(&ProgName, "execute", "prog.feed", "Filename of program to execute.")
+	flags.StringVar(&ProgName, "execute", "test.feed", "Filename of program to execute.")
 }
 
 func mainExecute(cmd *cobra.Command, _ []string) error {

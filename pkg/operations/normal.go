@@ -211,9 +211,9 @@ func runQueryIdxPerThread(np *NormalProg) error {
 	fmt.Printf("Endpoints: %v\n", endpoints)
 	config.OutputMutex.Unlock()
 	if config.Jwt != "" {
-		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
 	} else {
-		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
@@ -344,9 +344,9 @@ func createIdx(np *NormalProg) error {
 	fmt.Printf("Endpoints: %v\n", endpoints)
 	config.OutputMutex.Unlock()
 	if config.Jwt != "" {
-		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
 	} else {
-		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
@@ -445,9 +445,9 @@ func replacePerThread(np *NormalProg, mtx *sync.Mutex) error {
 	fmt.Printf("Endpoints: %v\n", endpoints)
 	config.OutputMutex.Unlock()
 	if config.Jwt != "" {
-		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
 	} else {
-		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
@@ -589,9 +589,9 @@ func updatePerThread(np *NormalProg, mtx *sync.Mutex) error {
 	fmt.Printf("Endpoints: %v\n", endpoints)
 	config.OutputMutex.Unlock()
 	if config.Jwt != "" {
-		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
 	} else {
-		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
@@ -734,9 +734,9 @@ func readOnlyPerThread(np *NormalProg) error {
 	fmt.Printf("Endpoints: %v\n", endpoints)
 	config.OutputMutex.Unlock()
 	if config.Jwt != "" {
-		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
 	} else {
-		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
@@ -883,9 +883,9 @@ func writeSomeBatches(np *NormalProg, nrBatches int64, id int64) error {
 	fmt.Printf("Endpoints: %v\n", endpoints)
 	config.OutputMutex.Unlock()
 	if config.Jwt != "" {
-		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
 	} else {
-		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
@@ -957,9 +957,9 @@ func (np *NormalProg) Execute() error {
 	var cl driver.Client
 	var err error
 	if config.Jwt != "" {
-		cl, err = client.NewClient(config.Endpoints, driver.RawAuthentication(config.Jwt))
+		cl, err = client.NewClient(config.Endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
 	} else {
-		cl, err = client.NewClient(config.Endpoints, driver.BasicAuthentication(config.Username, config.Password))
+		cl, err = client.NewClient(config.Endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)

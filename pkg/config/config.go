@@ -17,6 +17,7 @@ var (
 	Password    string
 	ProgName    string
 	OutputMutex sync.Mutex
+	Protocol    string
 )
 
 // MakeClient produces a client with connection to the database.

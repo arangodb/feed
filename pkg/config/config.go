@@ -31,9 +31,9 @@ func MakeClient() (driver.Client, error) {
 	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
 	endpoints = endpoints[0:1] // Restrict to the first
 	if Jwt != "" {
-		cl, err = client.NewClient(endpoints, driver.RawAuthentication(Jwt))
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(Jwt), Protocol)
 	} else {
-		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(Username, Password))
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(Username, Password), Protocol)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("Could not connect to database at %v: %v\n", Endpoints, err)

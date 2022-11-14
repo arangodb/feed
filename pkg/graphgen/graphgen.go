@@ -62,12 +62,12 @@ func (c *Cyclic) EdgeChannel() chan *datagen.Doc {
 			var d datagen.Doc
 			d.ShaKey(i, c.keySize)
 			d.Label = strconv.Itoa(int(i))
-			d.From = c.VertexCollName + "/" + datagen.KeyFromIndex(i)
+			d.From = c.VertexCollName + "/" + datagen.KeyFromIndex(i)[0:c.keySize]
 			to := i + 1
 			if to > c.n {
 				to = 1
 			}
-			d.To = c.VertexCollName + "/" + datagen.KeyFromIndex(to)
+			d.To = c.VertexCollName + "/" + datagen.KeyFromIndex(to)[0:c.keySize]
 			c.E <- &d
 		}
 		close(c.E)

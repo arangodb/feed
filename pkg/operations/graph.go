@@ -123,11 +123,11 @@ func (gp *GraphProg) Insert(what string) error {
 	if what == "vertices" {
 		// Number of batches to put into the collection:
 		numberDocs = gg.NumberVertices()
-		numberBatches = numberDocs / gp.BatchSize
+		numberBatches = (numberDocs + gp.BatchSize - 1) / gp.BatchSize
 		ch = gg.VertexChannel()
 	} else if what == "edges" {
 		numberDocs = gg.NumberEdges()
-		numberBatches = numberDocs / gp.BatchSize
+		numberBatches = (numberDocs + gp.BatchSize - 1) / gp.BatchSize
 		ch = gg.EdgeChannel()
 	} else {
 		return fmt.Errorf("unknown insert task %s", what)

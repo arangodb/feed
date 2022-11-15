@@ -17,6 +17,7 @@ func Init() {
 		feedlang.Atoms = make(map[string]feedlang.Maker, 100)
 	}
 	feedlang.Atoms["normal"] = NewNormalProg
+	feedlang.Atoms["graph"] = NewGraphProg
 }
 
 // CheckInt64Parameter is used to work on user input from the program and

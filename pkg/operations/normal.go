@@ -1,22 +1,20 @@
 package operations
 
 import (
+	"context"
+	"fmt"
 	"github.com/arangodb/feed/pkg/client"
 	"github.com/arangodb/feed/pkg/config"
 	"github.com/arangodb/feed/pkg/database"
 	"github.com/arangodb/feed/pkg/datagen"
 	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/go-driver"
-
-	"context"
-	"fmt"
 	"math/rand"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
-	/*
-		"crypto/sha256"
-		"strconv"
-	*/)
+)
 
 type NormalProg struct {
 	// General parameters:
@@ -35,16 +33,31 @@ type NormalProg struct {
 	StartDelay  int64
 	BatchSize   int64
 
-	// Parameters for random reads:
-	EachReads int64
+	// Parameters for random:
+	LoadPerThread int64
+
+	// Parameter for query on index:
+	QueryLimit int64
+
+	// Parameter for index creation or query on index
+	IdxName string
 }
 
-func NewNormalProg(args []string) (feedlang.Program, error) {
-	// This function parses the command line args and fills the values in
-	// the struct.
-	// Defaults:
-	subCmd, m := ParseArguments(args)
-	var np *NormalProg = &NormalProg{
+type WriteConflictStats struct {
+	numUpdateWriteConflicts  int64
+	numReplaceWriteConflicts int64
+}
+
+var (
+	writeConflictStats WriteConflictStats
+	normalSubprograms  = map[string]struct{}{"create": {}, "insert": {},
+		"randomRead": {}, "randomUpdate": {}, "randomReplace": {},
+		"createIdx": {}, "queryOnIdx": {},
+	}
+)
+
+func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
+	return &NormalProg{
 		Database:          GetStringValue(m, "database", "_system"),
 		Collection:        GetStringValue(m, "collection", "batchimport"),
 		Drop:              GetBoolValue(m, "drop", false),
@@ -60,13 +73,22 @@ func NewNormalProg(args []string) (feedlang.Program, error) {
 			NumberFields: GetInt64Value(m, "numberFields", 1),
 		},
 
-		Parallelism: GetInt64Value(m, "parallelism", 16),
-		StartDelay:  GetInt64Value(m, "startDelay", 5),
-		BatchSize:   GetInt64Value(m, "batchSize", 1000),
-		EachReads:   GetInt64Value(m, "eachReads", 50),
+		Parallelism:   GetInt64Value(m, "parallelism", 16),
+		StartDelay:    GetInt64Value(m, "startDelay", 5),
+		BatchSize:     GetInt64Value(m, "batchSize", 1000),
+		LoadPerThread: GetInt64Value(m, "loadPerThread", 50),
+		QueryLimit:    GetInt64Value(m, "queryLimit", 1),
+		IdxName:       GetStringValue(m, "idxName", ""),
 	}
-	if np.SubCommand != "create" &&
-		np.SubCommand != "insert" && np.SubCommand != "random-read" {
+}
+
+func NewNormalProg(args []string) (feedlang.Program, error) {
+	// This function parses the command line args and fills the values in
+	// the struct.
+	// Defaults:
+	subCmd, m := ParseArguments(args)
+	np := parseNormalArgs(subCmd, m)
+	if _, hasKey := normalSubprograms[np.SubCommand]; !hasKey {
 		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
 	return np, nil
@@ -123,6 +145,54 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 	return nil
 }
 
+func (np *NormalProg) RunQueryOnIdx(cl driver.Client) error {
+	config.OutputMutex.Lock()
+	fmt.Printf("\nnormal: Will perform query on idx.\n\n")
+	config.OutputMutex.Unlock()
+
+	if err := runQueryOnIdxInParallel(np); err != nil {
+		return fmt.Errorf("can not run query on idx")
+	}
+
+	return nil
+}
+
+func (np *NormalProg) CreateIdx(cl driver.Client) error {
+	config.OutputMutex.Lock()
+	fmt.Printf("\nnormal: Will perform index creation.\n\n")
+	config.OutputMutex.Unlock()
+
+	if err := createIdx(np); err != nil {
+		return fmt.Errorf("can not create index")
+	}
+
+	return nil
+}
+
+func (np *NormalProg) RandomReplace(cl driver.Client) error {
+	config.OutputMutex.Lock()
+	fmt.Printf("\nnormal: Will perform random replaces.\n\n")
+	config.OutputMutex.Unlock()
+
+	if err := replaceRandomlyInParallel(np); err != nil {
+		return fmt.Errorf("can not replace randomly")
+	}
+
+	return nil
+}
+
+func (np *NormalProg) RandomUpdate(cl driver.Client) error {
+	config.OutputMutex.Lock()
+	fmt.Printf("\nnormal: Will perform random updates.\n\n")
+	config.OutputMutex.Unlock()
+
+	if err := updateRandomlyInParallel(np); err != nil {
+		return fmt.Errorf("can not update randomly")
+	}
+
+	return nil
+}
+
 func (np *NormalProg) RandomRead(cl driver.Client) error {
 	config.OutputMutex.Lock()
 	fmt.Printf("\nnormal: Will perform random reads.\n\n")
@@ -133,6 +203,529 @@ func (np *NormalProg) RandomRead(cl driver.Client) error {
 	}
 
 	return nil
+}
+
+func runQueryIdxPerThread(np *NormalProg) error {
+	// Let's use our own private client and connection here:
+	var cl driver.Client
+	var err error
+	var endpoints []string = make([]string, 0, len(config.Endpoints))
+	for _, e := range config.Endpoints {
+		endpoints = append(endpoints, e)
+	}
+	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	endpoints = endpoints[0:1] // Restrict to the first
+	config.OutputMutex.Lock()
+	fmt.Printf("Endpoints: %v\n", endpoints)
+	config.OutputMutex.Unlock()
+	if config.Jwt != "" {
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
+	} else {
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
+	}
+	if err != nil {
+		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
+	}
+	ctx := context.Background()
+	db, err := cl.Database(ctx, np.Database)
+	if err != nil {
+		return fmt.Errorf("Can not get database: %s", np.Database)
+	}
+
+	col, err := db.Collection(ctx, np.Collection)
+	if err != nil {
+		fmt.Printf("query on index execution: could not open `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	idxs, err := col.Indexes(ctx)
+	// to not lookup name in array
+	idxsToAttrs := make(map[string][]string)
+	for _, idx := range idxs {
+		idxsToAttrs[idx.UserName()] = idx.Fields()
+	}
+
+	var idxAttr string
+
+	if strings.HasPrefix(np.IdxName, "\"") {
+		np.IdxName = np.IdxName[1 : len(np.IdxName)-1]
+	}
+
+	if len(np.IdxName) == 0 {
+		idxAttr = idxs[1].Fields()[0]
+	} else if np.IdxName == "primary" {
+		idxAttr = idxs[0].Fields()[0]
+	} else {
+		idxAttrs, exists := idxsToAttrs[np.IdxName]
+		if !exists {
+			return fmt.Errorf("query on index execution: index name " + np.IdxName + " not found")
+		}
+		idxAttr = idxAttrs[0]
+	}
+
+	times := make([]time.Duration, 0, np.LoadPerThread)
+	cyclestart := time.Now()
+
+	for i := int64(1); i <= np.LoadPerThread; i++ {
+		start := time.Now()
+		randLength := rand.Intn(100)
+		source := rand.New(rand.NewSource(int64(np.LoadPerThread) + rand.Int63()))
+		randWord := datagen.MakeRandomStringWithSpaces(randLength, source)
+
+		queryStr := "FOR doc IN " + np.Collection + " SORT doc." + idxAttr + " DESC FILTER doc." + idxAttr + " >= \"" + randWord + "\" LIMIT " + strconv.FormatInt(np.QueryLimit, 10) + " RETURN doc"
+		_, err = db.Query(ctx, queryStr, nil)
+
+		if err != nil {
+			return fmt.Errorf("Can not execute query on index %v\n", err)
+		}
+		times = append(times, time.Now().Sub(start))
+	}
+	totaltime := time.Now().Sub(cyclestart)
+	queriesonidxpersec := float64(np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for running %d queries on indexes.\n  queries per second in this go routine: %f", np.LoadPerThread, queriesonidxpersec))
+	return nil
+}
+
+func runQueryOnIdxInParallel(np *NormalProg) error {
+	totaltimestart := time.Now()
+	wg := sync.WaitGroup{}
+	haveError := false
+
+	for i := 0; i <= int(np.Parallelism)-1; i++ {
+		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
+		i := i // bring into scope
+		wg.Add(1)
+
+		go func(wg *sync.WaitGroup, i int) {
+			defer wg.Done()
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Starting go routine...\n")
+				config.OutputMutex.Unlock()
+			}
+
+			err := runQueryIdxPerThread(np)
+			if err != nil {
+				fmt.Printf("query on index execution error: %v\n", err)
+				haveError = true
+			}
+
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Go routine %d done\n", i)
+				config.OutputMutex.Unlock()
+			}
+		}(&wg, i)
+	}
+
+	wg.Wait()
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+	idxqueriespersec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+
+	fmt.Printf("\nnormal: Total number of query on index executions: %d,\n  total time: %v,\n total queries per second: %f\n\n", np.Parallelism*np.LoadPerThread, totaltimeend.Sub(totaltimestart), idxqueriespersec)
+	if !haveError {
+		return nil
+	}
+	fmt.Printf("Error in query execution.\n")
+	return fmt.Errorf("Error in query execution.")
+}
+
+func createIdx(np *NormalProg) error {
+	totaltimestart := time.Now()
+	haveError := false
+	if config.Verbose {
+		config.OutputMutex.Lock()
+		fmt.Printf("normal: Starting idxCreation...\n")
+		config.OutputMutex.Unlock()
+	}
+	// Let's use our own private client and connection here:
+	var cl driver.Client
+	var err error
+	var endpoints []string = make([]string, 0, len(config.Endpoints))
+	for _, e := range config.Endpoints {
+		endpoints = append(endpoints, e)
+	}
+	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	endpoints = endpoints[0:1] // Restrict to the first
+	config.OutputMutex.Lock()
+	fmt.Printf("Endpoints: %v\n", endpoints)
+	config.OutputMutex.Unlock()
+	if config.Jwt != "" {
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
+	} else {
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
+	}
+	if err != nil {
+		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
+	}
+	db, err := cl.Database(context.Background(), np.Database)
+	if err != nil {
+		return fmt.Errorf("Can not get database: %s", np.Database)
+	}
+
+	col, err := db.Collection(nil, np.Collection)
+	if err != nil {
+		fmt.Printf("idxCreation: could not open `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	ctx := context.Background()
+
+	idxTypes := make([]string, 0, np.LoadPerThread)
+
+	idxTypes = append(idxTypes, "persistent")
+	if np.DocConfig.WithGeo {
+		idxTypes = append(idxTypes, "geo")
+	}
+
+	idxFields := make([]string, 0, 17) // Paylaod from 1 to F + Words = 17
+
+	for i := int64(1); i <= np.DocConfig.NumberFields; i++ {
+		idxFields = append(idxFields, "payload"+fmt.Sprintf("%x", i))
+	}
+	/*
+		not shuffle fields for now
+
+		rand.Seed(time.Now().UnixNano())
+		rand.Shuffle(len(idxFields), func(i, j int) { idxFields[i], idxFields[j] = idxFields[j], idxFields[i] })
+
+		not use this attribute for now
+			if np.DocConfig.WithWords > 0 {
+				idxFields = append(idxFields, "Words")
+			}
+	*/
+
+	var idxName string
+	if strings.HasPrefix(np.IdxName, "\"") {
+		np.IdxName = np.IdxName[1 : len(np.IdxName)-1]
+	}
+	if len(np.IdxName) > 0 {
+		idxName = np.IdxName
+	} else {
+		idxName = "idx" + strconv.Itoa(int(rand.Uint32()))
+	}
+	if np.DocConfig.WithGeo {
+		var options driver.EnsureGeoIndexOptions
+		options.Name = idxName
+		//the method didn't accept a simple array, so has to do the following to add the field as an argument
+		geoPayload := make([]string, 0, 1)
+		geoPayload = append(geoPayload, "geo")
+		_, _, err = col.EnsureGeoIndex(ctx, geoPayload, &options)
+	} else {
+		var options driver.EnsurePersistentIndexOptions
+		options.Name = idxName
+		_, _, err = col.EnsurePersistentIndex(ctx, idxFields, &options)
+	}
+
+	if err != nil {
+		haveError = true
+	}
+
+	if config.Verbose {
+		config.OutputMutex.Lock()
+		fmt.Printf("normal: idxCreation done\n")
+		config.OutputMutex.Unlock()
+	}
+
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+	idxspersec := 1 / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: total time: %v,\n total idxs per second: %f \n\n", totaltimeend.Sub(totaltimestart), idxspersec)
+	if !haveError {
+		return nil
+	}
+	fmt.Printf("Error in idxCreation %v \n", err)
+	return fmt.Errorf("Error in idxCreation.")
+}
+
+func replacePerThread(np *NormalProg, mtx *sync.Mutex) error {
+	// Let's use our own private client and connection here:
+	var cl driver.Client
+	var err error
+	var endpoints []string = make([]string, 0, len(config.Endpoints))
+	for _, e := range config.Endpoints {
+		endpoints = append(endpoints, e)
+	}
+	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	endpoints = endpoints[0:1] // Restrict to the first
+	config.OutputMutex.Lock()
+	fmt.Printf("Endpoints: %v\n", endpoints)
+	config.OutputMutex.Unlock()
+	if config.Jwt != "" {
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
+	} else {
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
+	}
+	if err != nil {
+		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
+	}
+	db, err := cl.Database(context.Background(), np.Database)
+	if err != nil {
+		return fmt.Errorf("Can not get database: %s", np.Database)
+	}
+
+	col, err := db.Collection(nil, np.Collection)
+	if err != nil {
+		fmt.Printf("randomReplace: could not open `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	ctx := context.Background()
+	colSize, err := col.Count(ctx)
+	if err != nil {
+		fmt.Printf("randomReplace: could not count num of docs for `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	var randIntId int64
+	var batchSizeLimit int64
+	if np.BatchSize > colSize {
+		batchSizeLimit = colSize
+	} else {
+		batchSizeLimit = np.BatchSize
+	}
+	times := make([]time.Duration, 0, np.LoadPerThread)
+	cyclestart := time.Now()
+
+	writeConflicts := int64(0)
+	for i := int64(1); i <= np.LoadPerThread; i++ {
+		keys := make([]string, 0, batchSizeLimit)
+		docs := make([]datagen.Doc, 0, batchSizeLimit)
+
+		source := rand.New(rand.NewSource(int64(np.LoadPerThread) + rand.Int63()))
+
+		for j := int64(1); j <= batchSizeLimit; j++ {
+			var doc datagen.Doc
+			randIntId = rand.Int63n(colSize) + 1
+			doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
+			keys = append(keys, doc.Key)
+
+			doc.FillData(&np.DocConfig, source)
+			docs = append(docs, doc)
+		}
+		start := time.Now()
+		_, errSlice, err := col.ReplaceDocuments(ctx, keys, docs)
+		if err != nil {
+			//if there's a write/write conflict, we ignore it, but count for statistics, err is not supposed to return a write conflict, only the ErrorSlice, but doesn't hurt performance much to test it
+			if driver.IsPreconditionFailed(err) {
+				writeConflicts++
+			} else {
+				mtx.Lock()
+				writeConflictStats.numReplaceWriteConflicts += writeConflicts
+				mtx.Unlock()
+				return fmt.Errorf("Can not replace documents %v\n", err)
+			}
+		}
+		if errSlice != nil {
+			for _, err2 := range errSlice {
+				if err2 != nil {
+					if driver.IsPreconditionFailed(err2) {
+						writeConflicts++
+					}
+				}
+			}
+		}
+
+		times = append(times, time.Now().Sub(start))
+	}
+	totaltime := time.Now().Sub(cyclestart)
+	replacespersec := float64(np.LoadPerThread) * float64(batchSizeLimit) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for replacing %d docs randomly.\n  docs per second in this go routine: %f", np.LoadPerThread*batchSizeLimit, replacespersec))
+	mtx.Lock()
+	writeConflictStats.numReplaceWriteConflicts += writeConflicts
+	mtx.Unlock()
+	return nil
+}
+
+func replaceRandomlyInParallel(np *NormalProg) error {
+	totaltimestart := time.Now()
+	wg := sync.WaitGroup{}
+	haveError := false
+	var mtx sync.Mutex
+	for i := 0; i <= int(np.Parallelism)-1; i++ {
+		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
+		i := i // bring into scope
+		wg.Add(1)
+
+		go func(wg *sync.WaitGroup, i int, mtx *sync.Mutex) {
+			defer wg.Done()
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Starting go routine...\n")
+				config.OutputMutex.Unlock()
+			}
+
+			err := replacePerThread(np, mtx)
+			if err != nil {
+				fmt.Printf("randomReplace error: %v\n", err)
+				haveError = true
+			}
+
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Go routine %d done\n", i)
+				config.OutputMutex.Unlock()
+			}
+		}(&wg, i, &mtx)
+	}
+
+	wg.Wait()
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+	replacespersec := float64(np.Parallelism*np.LoadPerThread*np.BatchSize) / (float64(totaltime) / float64(time.Second))
+
+	fmt.Printf("\nnormal: Total number of replaces: %d,\n  total time: %v,\n total replaces per second: %f,\n total write conflicts: %d \n\n", np.Parallelism*np.LoadPerThread*np.BatchSize, totaltimeend.Sub(totaltimestart), replacespersec, writeConflictStats.numReplaceWriteConflicts)
+	if !haveError {
+		return nil
+	}
+	fmt.Printf("Error in randomReplace.\n")
+	return fmt.Errorf("Error in randomReplace.")
+}
+
+func updatePerThread(np *NormalProg, mtx *sync.Mutex) error {
+	// Let's use our own private client and connection here:
+	var cl driver.Client
+	var err error
+	var endpoints []string = make([]string, 0, len(config.Endpoints))
+	for _, e := range config.Endpoints {
+		endpoints = append(endpoints, e)
+	}
+	rand.Shuffle(len(endpoints), func(i int, j int) { endpoints[i], endpoints[j] = endpoints[j], endpoints[i] })
+	endpoints = endpoints[0:1] // Restrict to the first
+	config.OutputMutex.Lock()
+	fmt.Printf("Endpoints: %v\n", endpoints)
+	config.OutputMutex.Unlock()
+	if config.Jwt != "" {
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
+	} else {
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
+	}
+	if err != nil {
+		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
+	}
+	db, err := cl.Database(context.Background(), np.Database)
+	if err != nil {
+		return fmt.Errorf("Can not get database: %s", np.Database)
+	}
+
+	col, err := db.Collection(nil, np.Collection)
+	if err != nil {
+		fmt.Printf("randomUpdate: could not open `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	ctx := context.Background()
+	colSize, err := col.Count(ctx)
+	if err != nil {
+		fmt.Printf("randomUpdate: could not count num of docs for `%s` collection: %v\n", np.Collection, err)
+		return err
+	}
+
+	var randIntId int64
+	var batchSizeLimit int64
+	if np.BatchSize > colSize {
+		batchSizeLimit = colSize
+	} else {
+		batchSizeLimit = np.BatchSize
+	}
+	times := make([]time.Duration, 0, np.LoadPerThread)
+	cyclestart := time.Now()
+	writeConflicts := int64(0)
+	for i := int64(1); i <= np.LoadPerThread; i++ {
+		keys := make([]string, 0, batchSizeLimit)
+		docs := make([]datagen.Doc, 0, batchSizeLimit)
+
+		source := rand.New(rand.NewSource(int64(np.LoadPerThread) + rand.Int63()))
+
+		for j := int64(1); j <= batchSizeLimit; j++ {
+			var doc datagen.Doc
+			randIntId = rand.Int63n(colSize) + 1
+			doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
+			keys = append(keys, doc.Key)
+			doc.FillData(&np.DocConfig, source)
+			docs = append(docs, doc)
+		}
+
+		start := time.Now()
+
+		_, errSlice, err := col.UpdateDocuments(ctx, keys, docs)
+		if err != nil {
+			//if there's a write/write conflict, we ignore it, but count for statistics, err is not supposed to return a write conflict, only the ErrorSlice, but doesn't hurt performance much to test it
+			if driver.IsPreconditionFailed(err) {
+				writeConflicts++
+			} else {
+				mtx.Lock()
+				writeConflictStats.numUpdateWriteConflicts += writeConflicts
+				mtx.Unlock()
+				return fmt.Errorf("Can not update documents %v\n", err)
+			}
+		}
+		if errSlice != nil {
+			for _, err2 := range errSlice {
+				if err2 != nil {
+					if driver.IsPreconditionFailed(err2) {
+						writeConflicts++
+					}
+				}
+			}
+		}
+		times = append(times, time.Now().Sub(start))
+	}
+	totaltime := time.Now().Sub(cyclestart)
+	updatespersec := float64(np.LoadPerThread) * float64(batchSizeLimit) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for updating %d docs randomly.\n  docs per second in this go routine: %f", np.LoadPerThread*batchSizeLimit, updatespersec))
+	mtx.Lock()
+	writeConflictStats.numReplaceWriteConflicts += writeConflicts
+	mtx.Unlock()
+	return nil
+}
+
+func updateRandomlyInParallel(np *NormalProg) error {
+	totaltimestart := time.Now()
+	wg := sync.WaitGroup{}
+	haveError := false
+	var mtx sync.Mutex
+	for i := 0; i <= int(np.Parallelism)-1; i++ {
+		time.Sleep(time.Duration(np.StartDelay) * time.Millisecond)
+		i := i // bring into scope
+		wg.Add(1)
+
+		go func(wg *sync.WaitGroup, i int, mtx *sync.Mutex) {
+			defer wg.Done()
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Starting go routine...\n")
+				config.OutputMutex.Unlock()
+			}
+
+			err := updatePerThread(np, mtx)
+			mtx.Lock()
+			writeConflictStats.numUpdateWriteConflicts++
+			mtx.Unlock()
+			if err != nil {
+				fmt.Printf("randomUpdate error: %v\n", err)
+				haveError = true
+			}
+
+			if config.Verbose {
+				config.OutputMutex.Lock()
+				fmt.Printf("normal: Go routine %d done\n", i)
+				config.OutputMutex.Unlock()
+			}
+		}(&wg, i, &mtx)
+	}
+
+	wg.Wait()
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+	updatespersec := float64(np.Parallelism*np.LoadPerThread*np.BatchSize) / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: Total number of updates: %d,\n  total time: %v,\n total updates per second: %f,\n total write conflicts: %d \n\n", np.Parallelism*np.LoadPerThread*np.BatchSize, totaltimeend.Sub(totaltimestart), updatespersec, writeConflictStats.numUpdateWriteConflicts)
+	if !haveError {
+		return nil
+	}
+	fmt.Printf("Error in randomUpdate.\n")
+	return fmt.Errorf("Error in randomUpdate.")
 }
 
 func readOnlyPerThread(np *NormalProg) error {
@@ -149,9 +742,9 @@ func readOnlyPerThread(np *NormalProg) error {
 	fmt.Printf("Endpoints: %v\n", endpoints)
 	config.OutputMutex.Unlock()
 	if config.Jwt != "" {
-		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
 	} else {
-		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
@@ -174,9 +767,9 @@ func readOnlyPerThread(np *NormalProg) error {
 		return err
 	}
 
-	times := make([]time.Duration, 0, np.EachReads)
+	times := make([]time.Duration, 0, np.LoadPerThread)
 	cyclestart := time.Now()
-	for i := int64(1); i <= np.EachReads; i++ {
+	for i := int64(1); i <= np.LoadPerThread; i++ {
 		randIntId := rand.Int63n(colSize) + 1
 
 		var doc datagen.Doc
@@ -192,8 +785,8 @@ func readOnlyPerThread(np *NormalProg) error {
 		}
 	}
 	totaltime := time.Now().Sub(cyclestart)
-	readspersec := float64(np.EachReads) / (float64(totaltime) / float64(time.Second))
-	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for reading %d docs randomly.\n  docs per second in this go routine: %f", np.EachReads, readspersec))
+	readspersec := float64(np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+	WriteStatisticsForTimes(times, fmt.Sprintf("\nnormal: Times for reading %d docs randomly.\n  docs per second in this go routine: %f", np.LoadPerThread, readspersec))
 	return nil
 }
 
@@ -216,7 +809,7 @@ func readRandomlyInParallel(np *NormalProg) error {
 
 			err := readOnlyPerThread(np)
 			if err != nil {
-				fmt.Printf("writeSomeBatches error: %v\n", err)
+				fmt.Printf("randomRead error: %v\n", err)
 				haveError = true
 			}
 
@@ -231,8 +824,8 @@ func readRandomlyInParallel(np *NormalProg) error {
 	wg.Wait()
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
-	readspersec := float64(np.Parallelism*np.EachReads) / (float64(totaltime) / float64(time.Second))
-	fmt.Printf("\nnormal: Total number of reads: %d,\n  total time: %v,\n total reads per second: %f\n\n", np.Parallelism*np.EachReads, totaltimeend.Sub(totaltimestart), readspersec)
+	readspersec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+	fmt.Printf("\nnormal: Total number of reads: %d,\n  total time: %v,\n total reads per second: %f\n\n", np.Parallelism*np.LoadPerThread, totaltimeend.Sub(totaltimestart), readspersec)
 	if !haveError {
 		return nil
 	}
@@ -298,9 +891,9 @@ func writeSomeBatches(np *NormalProg, nrBatches int64, id int64) error {
 	fmt.Printf("Endpoints: %v\n", endpoints)
 	config.OutputMutex.Unlock()
 	if config.Jwt != "" {
-		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt))
+		cl, err = client.NewClient(endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
 	} else {
-		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password))
+		cl, err = client.NewClient(endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
@@ -372,9 +965,9 @@ func (np *NormalProg) Execute() error {
 	var cl driver.Client
 	var err error
 	if config.Jwt != "" {
-		cl, err = client.NewClient(config.Endpoints, driver.RawAuthentication(config.Jwt))
+		cl, err = client.NewClient(config.Endpoints, driver.RawAuthentication(config.Jwt), config.Protocol)
 	} else {
-		cl, err = client.NewClient(config.Endpoints, driver.BasicAuthentication(config.Username, config.Password))
+		cl, err = client.NewClient(config.Endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
@@ -384,8 +977,16 @@ func (np *NormalProg) Execute() error {
 		return np.Create(cl)
 	case "insert":
 		return np.Insert(cl)
-	case "random-read":
+	case "randomRead":
 		return np.RandomRead(cl)
+	case "randomUpdate":
+		return np.RandomUpdate(cl)
+	case "randomReplace":
+		return np.RandomReplace(cl)
+	case "createIdx":
+		return np.CreateIdx(cl)
+	case "queryOnIdx":
+		return np.RunQueryOnIdx(cl)
 	}
 	return nil
 }

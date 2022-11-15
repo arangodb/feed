@@ -37,32 +37,47 @@ type Poly struct {
 }
 
 type Doc struct {
-	Key       string `json:"_key"`
-	Index     string `json: "index"`
-	Sha       string `json:"sha"`
-	Label     string `json:"label,omitempty"`
+	// Key is for the database, it is the hash value of Index
+	Key string `json:"_key"`
+	// Index: from 0 to some n-1, unique and global in the whole graph
+	// For vertices only.
+	Index uint64
+	Sha   string `json:"sha"`
+	// Label == prefix + "_" + localIndex (or == localIndex if prefix is empty)
+	// Here prefix encodes the position
+	// in the graph parse tree and local index is from 0 to some n-1 and
+	// local w.r.t. the leaf in the parse tree where the vertex/edge
+	// is constructed.
+	// If prefix is empty, then Label == local
+	Label string `json:"label,omitempty"`
+	// For edges only, the hash value of Index of the from vertex
 	From      string `json:"_from,omitempty"`
-	To        string `json:"_to,omitempty"`
+	FromIndex uint64 `json:"fromIndex,omitempty"`
+	ToIndex   uint64 `json:"fromIndex,omitempty"`
+	// For edges only, the hash value of Index of the to vertex
+	To string `json:"_to,omitempty"`
+	// For edges only, the Label of the from vertex
 	FromLabel string `json:"fromId,omitempty"`
-	ToLabel   string `json:"toId,omitempty"`
-	Payload0  string `json:"payload0"`
-	Payload1  string `json:"payload1,omitempty"`
-	Payload2  string `json:"payload2,omitempty"`
-	Payload3  string `json:"payload3,omitempty"`
-	Payload4  string `json:"payload4,omitempty"`
-	Payload5  string `json:"payload5,omitempty"`
-	Payload6  string `json:"payload6,omitempty"`
-	Payload7  string `json:"payload7,omitempty"`
-	Payload8  string `json:"payload8,omitempty"`
-	Payload9  string `json:"payload9,omitempty"`
-	Payloada  string `json:"payloada,omitempty"`
-	Payloadb  string `json:"payloadb,omitempty"`
-	Payloadc  string `json:"payloadc,omitempty"`
-	Payloadd  string `json:"payloadd,omitempty"`
-	Payloade  string `json:"payloade,omitempty"`
-	Payloadf  string `json:"payloadf,omitempty"`
-	Geo       *Poly  `Json:"geo,omitempty"`
-	Words     string `json:"words,omitempty"`
+	// For edges only, the Label of the to vertex
+	ToLabel  string `json:"toId,omitempty"`
+	Payload0 string `json:"payload0"`
+	Payload1 string `json:"payload1,omitempty"`
+	Payload2 string `json:"payload2,omitempty"`
+	Payload3 string `json:"payload3,omitempty"`
+	Payload4 string `json:"payload4,omitempty"`
+	Payload5 string `json:"payload5,omitempty"`
+	Payload6 string `json:"payload6,omitempty"`
+	Payload7 string `json:"payload7,omitempty"`
+	Payload8 string `json:"payload8,omitempty"`
+	Payload9 string `json:"payload9,omitempty"`
+	Payloada string `json:"payloada,omitempty"`
+	Payloadb string `json:"payloadb,omitempty"`
+	Payloadc string `json:"payloadc,omitempty"`
+	Payloadd string `json:"payloadd,omitempty"`
+	Payloade string `json:"payloade,omitempty"`
+	Payloadf string `json:"payloadf,omitempty"`
+	Geo      *Poly  `Json:"geo,omitempty"`
+	Words    string `json:"words,omitempty"`
 }
 
 // makeRandomPolygon makes a random GeoJson polygon.

@@ -7,37 +7,48 @@ import (
 )
 
 type PathParameters struct {
-	Length     uint64 // number of edges
-	Directed   bool
-	Prefix     string
-	StartIndex uint64
+	Length        uint64 // number of edges
+	Directed      bool
+	GeneralParams GeneralParameters
 }
 
 func (p *PathParameters) MakeGraphGenerator() (GraphGenerator, error) {
 
-	V := make(chan *datagen.Doc, batchSize())
-	E := make(chan *datagen.Doc, batchSize())
+	V := make(chan *datagen.Doc, BatchSize())
+	E := make(chan *datagen.Doc, BatchSize())
+
+	if p.GeneralParams.Prefix != "" {
+		p.GeneralParams.Prefix += "_"
+	}
 
 	go func() {
 		var i uint64
 		for i = 0; i <= p.Length; i += 1 { // one more vertices than Length
-			var d datagen.Doc
-			if p.Prefix == "" {
-				d.Label = strconv.Itoa(int(i))
-			} else {
-				d.Label = p.Prefix + "_" + strconv.Itoa(int(i))
-			}
-			V <- &d
+			label := strconv.FormatUint(i, 10)
+			makeVertex(&p.GeneralParams.Prefix,
+				p.GeneralParams.StartIndexVertices+i, &label, V)
 		}
 		close(V)
 	}()
 
 	go func() {
 		var i uint64
+		edgeIndex := p.GeneralParams.StartIndexEdges
 		for i = 0; i < p.Length; i += 1 {
-			makeEdge(p.Prefix, i, i, i+1, &E)
+			edgeLabel := strconv.FormatUint(i, 10)
+			globalFromIndex := p.GeneralParams.StartIndexVertices + i
+			globalToIndex := p.GeneralParams.StartIndexVertices + i + 1
+			fromLabel := strconv.FormatUint(i, 10)
+			toLabel := strconv.FormatUint(i+1, 10)
+
+			makeEdge(&p.GeneralParams.Prefix, edgeIndex, &edgeLabel,
+				globalFromIndex, globalToIndex, &fromLabel, &toLabel, E)
+			edgeIndex++
 			if !p.Directed {
-				makeEdge(p.Prefix, i, i+1, i, &E)
+				edgeLabel = strconv.FormatUint(edgeIndex, 10)
+				makeEdge(&p.GeneralParams.Prefix, edgeIndex, &edgeLabel,
+					globalToIndex, globalFromIndex, &toLabel, &fromLabel, E)
+				edgeIndex++
 			}
 		}
 		close(E)
@@ -53,3 +64,5 @@ func (p *PathParameters) MakeGraphGenerator() (GraphGenerator, error) {
 	return &GraphGeneratorData{V: V, E: E,
 		numberVertices: p.Length + 1, numberEdges: numEdges}, nil
 }
+
+var _ Generatable = &PathParameters{}

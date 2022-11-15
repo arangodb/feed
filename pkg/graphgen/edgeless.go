@@ -6,19 +6,18 @@ import (
 	"github.com/arangodb/feed/pkg/datagen"
 )
 
-type EdgelessGraph struct {
-	Size   uint64 // number of vertices
-	Prefix string
+type EdgelessGraphParameters struct {
+	Size          uint64 // number of vertices
+	GeneralParams GeneralParameters
 }
 
-func (g EdgelessGraph) MakeGraphGenerator() (GraphGenerator, error) {
+func (g *EdgelessGraphParameters) MakeGraphGenerator() (GraphGenerator, error) {
 
-	V := make(chan *datagen.Doc, batchSize())
-	E := make(chan *datagen.Doc, batchSize())
+	V := make(chan *datagen.Doc, BatchSize())
+	E := make(chan *datagen.Doc, BatchSize())
 
-	var prefix string = ""
-	if g.Prefix != "" {
-		prefix = g.Prefix + "_"
+	if g.GeneralParams.Prefix != "" {
+		g.GeneralParams.Prefix += "_"
 	}
 
 	close(E)
@@ -26,9 +25,9 @@ func (g EdgelessGraph) MakeGraphGenerator() (GraphGenerator, error) {
 	go func() {
 		var i uint64
 		for i = 0; i < g.Size; i += 1 {
-			var d datagen.Doc
-			d.Label = prefix + strconv.Itoa(int(i))
-			V <- &d
+			label := strconv.FormatUint(i, 10)
+			makeVertex(&g.GeneralParams.Prefix,
+				g.GeneralParams.StartIndexVertices+i, &label, V)
 		}
 		close(V)
 
@@ -37,3 +36,5 @@ func (g EdgelessGraph) MakeGraphGenerator() (GraphGenerator, error) {
 	return &GraphGeneratorData{V: V, E: E,
 		numberVertices: g.Size, numberEdges: 0}, nil
 }
+
+var _ Generatable = &EdgelessGraphParameters{}

@@ -7,15 +7,14 @@ import (
 )
 
 type UnionParameters struct {
-	Left       Generatable
-	Right      Generatable
-	Prefix     string
-	StartIndex uint64
+	Left          Generatable
+	Right         Generatable
+	GeneralParams GeneralParameters
 }
 
-func (u UnionParameters) MakeGraphGenerator() (GraphGenerator, error) {
-	V := make(chan *datagen.Doc, batchSize())
-	E := make(chan *datagen.Doc, batchSize())
+func (u *UnionParameters) MakeGraphGenerator() (GraphGenerator, error) {
+	V := make(chan *datagen.Doc, BatchSize())
+	E := make(chan *datagen.Doc, BatchSize())
 
 	p1, errLeft := u.Left.MakeGraphGenerator()
 	if errLeft != nil {
@@ -74,3 +73,5 @@ func (u UnionParameters) MakeGraphGenerator() (GraphGenerator, error) {
 		numberVertices: p1.NumberVertices() + p2.NumberVertices(),
 		numberEdges:    p1.NumberEdges() + p2.NumberEdges()}, nil
 }
+
+var _ Generatable = &UnionParameters{}

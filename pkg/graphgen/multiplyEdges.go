@@ -4,14 +4,14 @@ import (
 	"github.com/arangodb/feed/pkg/datagen"
 )
 
-type MultiplyEdges struct {
-	Operand Generatable
-	Factor  uint64
-	Prefix  string
+type MultiplyEdgesParameters struct {
+	Operand       Generatable
+	Factor        uint64
+	GeneralParams GeneralParameters
 }
 
-func (m MultiplyEdges) MakeGraphGenerator() (GraphGenerator, error) {
-	E := make(chan *datagen.Doc, batchSize())
+func (m MultiplyEdgesParameters) MakeGraphGenerator() (GraphGenerator, error) {
+	E := make(chan *datagen.Doc, BatchSize())
 
 	gg, err := m.Operand.MakeGraphGenerator()
 	if err != nil {
@@ -29,3 +29,5 @@ func (m MultiplyEdges) MakeGraphGenerator() (GraphGenerator, error) {
 		numberVertices: gg.NumberVertices(),
 		numberEdges:    gg.NumberEdges() * m.Factor}, nil
 }
+
+var _ Generatable = &MultiplyEdgesParameters{}

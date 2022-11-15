@@ -111,7 +111,8 @@ func (gp *GraphProg) Insert(what string) error {
 
 	switch gp.GraphType {
 	case "cyclic":
-		gg = graphgen.NewCyclicGraph(gp.GraphSize, int(gp.DocConfig.KeySize), gp.VertexCollName)
+		gg, _ = (&graphgen.CycleGraphParameters{uint64(gp.GraphSize),
+			graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
 	default:
 		return fmt.Errorf("Unknown graph type: %s", gp.GraphType)
 	}
@@ -122,11 +123,11 @@ func (gp *GraphProg) Insert(what string) error {
 	var ch chan *datagen.Doc
 	if what == "vertices" {
 		// Number of batches to put into the collection:
-		numberDocs = gg.NumberVertices()
+		numberDocs = int64(gg.NumberVertices())
 		numberBatches = (numberDocs + gp.BatchSize - 1) / gp.BatchSize
 		ch = gg.VertexChannel()
 	} else if what == "edges" {
-		numberDocs = gg.NumberEdges()
+		numberDocs = int64(gg.NumberEdges())
 		numberBatches = (numberDocs + gp.BatchSize - 1) / gp.BatchSize
 		ch = gg.EdgeChannel()
 	} else {

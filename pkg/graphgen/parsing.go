@@ -8,19 +8,17 @@ import (
 	"reflect"
 )
 
-func unionString() string   { return "union" }
-func lexProdString() string { return "lexProduct" }
-func treeString() string    { return "tree" }
-func pathString() string    { return "path" }
-func cycleString() string   { return "cycle" }
-
-func contains(string *string, strings []string) bool {
-	return true
-}
+const (
+	unionString   = "union"
+	lexProdString = "lexProduct"
+	treeString    = "tree"
+	pathString    = "path"
+	cycleString   = "cycle"
+)
 
 func checkSubtreeInput(jsonNodeName *string, subtree *interface{}) error {
 	switch *jsonNodeName {
-	case unionString(), lexProdString():
+	case unionString, lexProdString:
 		{
 			switch (*subtree).(type) {
 			case []interface{}:
@@ -41,7 +39,7 @@ func checkSubtreeInput(jsonNodeName *string, subtree *interface{}) error {
 			return nil
 		}
 
-	case pathString(), treeString(), cycleString():
+	case pathString, treeString, cycleString:
 		{
 			switch (*subtree).(type) {
 			case map[string]interface{}:
@@ -89,7 +87,7 @@ func parseJSONtoGraph(f map[string]any,
 			return errorResult(&err)
 		}
 		switch jsonNodeName {
-		case "union":
+		case unionString:
 			{
 				left := subtree.([]interface{})[0]
 				leftChild := left.(map[string]any)
@@ -119,7 +117,7 @@ func parseJSONtoGraph(f map[string]any,
 					numEdges + leftResult.numEdges + rightResult.numEdges,
 					nil}
 			}
-		case "lexProduct":
+		case lexProdString:
 			{
 				left := subtree.([]interface{})[0]
 				leftChild := left.(map[string]any)
@@ -152,7 +150,7 @@ func parseJSONtoGraph(f map[string]any,
 					nil}
 			}
 
-		case "path":
+		case pathString:
 			{
 				length := uint64(subtree.(map[string]interface{})["length"].(float64)) // unmarshalling can only give float, never int
 				directed := subtree.(map[string]interface{})["directed"].(bool)
@@ -161,7 +159,7 @@ func parseJSONtoGraph(f map[string]any,
 				return parseJSONtoGraphResult{&path,
 					numVertices + length + 1, numEdges + length, nil}
 			}
-		case "tree":
+		case treeString:
 			{
 				branchingDegree := uint64(subtree.(map[string]interface{})["branchingDegree"].(float64))
 				depth := uint64(subtree.(map[string]interface{})["depth"].(float64))
@@ -184,7 +182,7 @@ func parseJSONtoGraph(f map[string]any,
 					nil}
 
 			}
-		case "cycle":
+		case cycleString:
 			{
 				length := uint64(subtree.(map[string]interface{})["length"].(float64))
 				var cycle Generatable = &CycleGraphParameters{length,

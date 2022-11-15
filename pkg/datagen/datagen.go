@@ -90,9 +90,9 @@ func makeRandomPolygon(source *rand.Rand) *Poly {
 	return &ret
 }
 
-// makeRandomStringWithSpaces creates slice of bytes for the provided length.
+// MakeRandomStringWithSpaces creates slice of bytes for the provided length.
 // Each byte is in range from 33 to 123.
-func makeRandomStringWithSpaces(length int, source *rand.Rand) string {
+func MakeRandomStringWithSpaces(length int, source *rand.Rand) string {
 	b := make([]byte, length, length)
 
 	wordlen := source.Int()%17 + 3
@@ -161,7 +161,7 @@ func (doc *Doc) FillData(docConfig *DocumentConfig, source *rand.Rand) {
 	if payloadSize < 0 {
 		payloadSize = int64(5)
 	}
-	doc.Payload0 = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payload0 = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.WithGeo {
 		doc.Geo = makeRandomPolygon(source)
 	}
@@ -171,63 +171,63 @@ func (doc *Doc) FillData(docConfig *DocumentConfig, source *rand.Rand) {
 	if docConfig.NumberFields < 2 {
 		return
 	}
-	doc.Payload1 = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payload1 = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 3 {
 		return
 	}
-	doc.Payload2 = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payload2 = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 4 {
 		return
 	}
-	doc.Payload3 = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payload3 = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 5 {
 		return
 	}
-	doc.Payload4 = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payload4 = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 6 {
 		return
 	}
-	doc.Payload5 = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payload5 = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 7 {
 		return
 	}
-	doc.Payload6 = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payload6 = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 8 {
 		return
 	}
-	doc.Payload7 = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payload7 = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 9 {
 		return
 	}
-	doc.Payload8 = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payload8 = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 10 {
 		return
 	}
-	doc.Payload9 = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payload9 = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 11 {
 		return
 	}
-	doc.Payloada = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payloada = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 12 {
 		return
 	}
-	doc.Payloadb = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payloadb = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 13 {
 		return
 	}
-	doc.Payloadc = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payloadc = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 14 {
 		return
 	}
-	doc.Payloadd = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payloadd = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 15 {
 		return
 	}
-	doc.Payloade = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payloade = MakeRandomStringWithSpaces(int(payloadSize), source)
 	if docConfig.NumberFields < 16 {
 		return
 	}
-	doc.Payloadf = makeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Payloadf = MakeRandomStringWithSpaces(int(payloadSize), source)
 }
 
 type GraphGenerator interface {

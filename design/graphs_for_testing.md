@@ -22,6 +22,13 @@ Generating graphs can be performed by hand or using external generators. For thi
 - Realizations of degree sequences
 
 
+All structured graphs can obtain a parameter "directionType" which says how the edges should be directed.
+For example, in a tree, it can be "downwards" (away from the root), "upwards", "bidirected" or "alternating".
+For a path "directed", "bidirected" or "alternating",for a clique "transitive" (the transitive closure of a 
+path, i.e., the clique is the result of taking a path and adding edges until the edge relation is transitive) 
+or "bidirected". Here "alternating" in a path means that one edge is from left to right, the next fromright
+to left (such that the targets meet in one vertex), the next again from left to right and so on.
+
 ## Semi-structured Graphs
 Graphs obtained from structured graphs by introducing some amount of randomness. 
 For example, an undirected tree with one additional random edge or a clique with one randomly removed edge.

@@ -3,13 +3,21 @@ package client
 import (
 	"crypto/tls"
 	"github.com/arangodb/go-driver"
+	"github.com/arangodb/go-driver/http"
 	"github.com/arangodb/go-driver/vst"
 	"github.com/pkg/errors"
+	"golang.org/x/net/http2"
 	"net/url"
 )
 
+const (
+	ProtocolHttp1 = "http1"
+	ProtocolHttp2 = "http2"
+	ProtocolVST   = "vst"
+)
+
 // NewClient creates new client to the provided endpoints.
-func NewClient(endpoints []string, auth driver.Authentication) (driver.Client, error) {
+func NewClient(endpoints []string, auth driver.Authentication, protocol string) (driver.Client, error) {
 
 	var tlsConfig *tls.Config
 
@@ -26,10 +34,30 @@ func NewClient(endpoints []string, auth driver.Authentication) (driver.Client, e
 		//fmt.Printf("%d %s\n", i, endpoint)
 	}
 
-	conn, err := vst.NewConnection(vst.ConnectionConfig{
-		Endpoints: endpoints,
-		TLSConfig: tlsConfig,
-	})
+	var conn driver.Connection
+	var err error
+	switch protocol {
+	case ProtocolHttp2:
+		conn, err = http.NewConnection(http.ConnectionConfig{
+			Endpoints: endpoints,
+			TLSConfig: tlsConfig,
+			Transport: &http2.Transport{
+				TLSClientConfig: tlsConfig,
+				AllowHTTP:       true,
+			},
+		})
+	case ProtocolHttp1:
+		conn, err = http.NewConnection(http.ConnectionConfig{
+			Endpoints: endpoints,
+			TLSConfig: tlsConfig,
+		})
+
+	default: // covers VST:
+		conn, err = vst.NewConnection(vst.ConnectionConfig{
+			Endpoints: endpoints,
+			TLSConfig: tlsConfig,
+		})
+	}
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create connection")
 	}

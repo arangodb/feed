@@ -28,6 +28,7 @@ func init() {
 	flags.StringVar(&config.Username, "username", "root", "User name for database access.")
 	flags.StringVar(&config.Password, "password", "", "Password for database access.")
 	flags.StringVar(&ProgName, "execute", "prog.feed", "Filename of program to execute.")
+	flags.StringVar(&config.Protocol, "protocol", "vst", "Protocol (http1, http2, vst)")
 }
 
 func mainExecute(cmd *cobra.Command, _ []string) error {

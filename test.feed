@@ -7,7 +7,7 @@ normal insert database=xyz collection=c size=100M documentSize=300 withGeo=true 
 normal randomRead database=xyz collection=c parallelism=10 loadPerThread=50
 normal randomUpdate database=xyz collection=c parallelism=10 loadPerThread=50
 normal randomReplace database=xyz collection=c parallelism=10 loadPerThread=50
-normal queryOnIdx database=xyz collection=c limit=1 parallelism=1
-normal queryOnIdx database=xyz collection=c limit=1 parallelism=1 idxName="dog"
-normal queryOnIdx database=xyz collection=c limit=1 parallelism=1 idxName=primary
+normal queryOnIdx database=xyz collection=c queryLimit=1 parallelism=1
+normal queryOnIdx database=xyz collection=c queryLimit=1 parallelism=1 idxName="dog"
+normal queryOnIdx database=xyz collection=c queryLimit=1 parallelism=1 idxName=primary
 ]

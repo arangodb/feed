@@ -46,7 +46,7 @@ func (p *GraphGeneratorData) NumberEdges() uint64 {
 }
 
 type Generatable interface {
-	MakeGraphGenerator() (GraphGenerator, error)
+	MakeGraphGenerator(makeVertices bool, makeEdges bool) (GraphGenerator, error)
 }
 
 func BatchSize() int64 {

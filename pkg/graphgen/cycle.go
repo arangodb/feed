@@ -27,7 +27,9 @@ func makeCycleEdge(prefix *string, edgeLabel *string, localFromIndex uint64,
 		&fromLabel, &toLabel, e)
 }
 
-func (c *CycleGraphParameters) MakeGraphGenerator() (GraphGenerator, error) {
+func (c *CycleGraphParameters) MakeGraphGenerator(
+	makeVertices bool, makeEdges bool) (GraphGenerator, error) {
+
 	V := make(chan *datagen.Doc, BatchSize())
 	E := make(chan *datagen.Doc, BatchSize())
 
@@ -35,33 +37,41 @@ func (c *CycleGraphParameters) MakeGraphGenerator() (GraphGenerator, error) {
 		c.GeneralParams.Prefix += "_"
 	}
 
-	go func() { // Sender for vertices
-		// Has access to c because it is a closure
-		var i uint64
-		for i = 0; uint64(i) < c.Length; i += 1 {
-			index := i + c.GeneralParams.StartIndexVertices
-			label := vertexIndexToLabel(i)
-			makeVertex(&c.GeneralParams.Prefix, index, &label, V)
-		}
+	if makeVertices {
+		go func() { // Sender for vertices
+			// Has access to c because it is a closure
+			var i uint64
+			for i = 0; uint64(i) < c.Length; i += 1 {
+				index := i + c.GeneralParams.StartIndexVertices
+				label := vertexIndexToLabel(i)
+				makeVertex(&c.GeneralParams.Prefix, index, &label, V)
+			}
+			close(V)
+		}()
+	} else {
 		close(V)
-	}()
+	}
 
-	go func() { // Sender for edges
-		// Has access to c because it is a closure
-		var i uint64
-		for i = 0; uint64(i) < c.Length-1; i += 1 {
-			edgeLabel := strconv.FormatUint(i, 10)
-			makeCycleEdge(&c.GeneralParams.Prefix, &edgeLabel, i, i+1,
+	if makeEdges {
+		go func() { // Sender for edges
+			// Has access to c because it is a closure
+			var i uint64
+			for i = 0; uint64(i) < c.Length-1; i += 1 {
+				edgeLabel := strconv.FormatUint(i, 10)
+				makeCycleEdge(&c.GeneralParams.Prefix, &edgeLabel, i, i+1,
+					c.GeneralParams.StartIndexVertices,
+					c.GeneralParams.StartIndexEdges, E)
+			}
+			edgeLabel := strconv.FormatUint(c.Length-1, 10)
+			makeCycleEdge(&c.GeneralParams.Prefix, &edgeLabel, c.Length-1, 0,
 				c.GeneralParams.StartIndexVertices,
 				c.GeneralParams.StartIndexEdges, E)
-		}
-		edgeLabel := strconv.FormatUint(c.Length-1, 10)
-		makeCycleEdge(&c.GeneralParams.Prefix, &edgeLabel, c.Length-1, 0,
-			c.GeneralParams.StartIndexVertices,
-			c.GeneralParams.StartIndexEdges, E)
 
+			close(E)
+		}()
+	} else {
 		close(E)
-	}()
+	}
 
 	return &GraphGeneratorData{V: V, E: E,
 		numberVertices: c.Length, numberEdges: c.Length}, nil

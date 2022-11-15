@@ -68,7 +68,8 @@ type stackElem struct {
 	indexInt uint64
 }
 
-func (t *CompleteNaryTreeParameters) MakeGraphGenerator() (GraphGenerator, error) {
+func (t *CompleteNaryTreeParameters) MakeGraphGenerator(
+	makeVertices bool, makeEdges bool) (GraphGenerator, error) {
 
 	if t.BranchingDegree < 2 {
 		return nil, errors.New(fmt.Sprintf("Wrong argument to tree MakeGraphGenerator: %d; BranchingDegree should be at least 2.",
@@ -91,7 +92,9 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator() (GraphGenerator, error
 		}
 		rootLabel := ""
 		var vertexIndex uint64 = t.GeneralParams.StartIndexVertices
-		makeVertex(&rootPrefix, vertexIndex, &rootLabel, V)
+		if makeVertices {
+			makeVertex(&rootPrefix, vertexIndex, &rootLabel, V)
+		}
 		vertexIndex++
 
 		if t.GeneralParams.Prefix != "" {
@@ -107,14 +110,18 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator() (GraphGenerator, error
 			// add first to vertex channel
 			stack = append(stack, stackElem{first, vertexIndex})
 			labelStr := labelToString(&stack)
-			makeVertex(&t.GeneralParams.Prefix, vertexIndex, &labelStr, V)
+			if makeVertices {
+				makeVertex(&t.GeneralParams.Prefix, vertexIndex, &labelStr, V)
+			}
 
 			// add edge (eps, first) to edge channel
-			fromLabel := "eps"
-			toLabel := labelToString(&stack)
-			addEdge(&t.DirectionType, &t.GeneralParams.Prefix, &edgeIndex,
-				&labelStr, t.GeneralParams.StartIndexVertices, vertexIndex,
-				&fromLabel, &toLabel, E)
+			if makeEdges {
+				fromLabel := "eps"
+				toLabel := labelToString(&stack)
+				addEdge(&t.DirectionType, &t.GeneralParams.Prefix, &edgeIndex,
+					&labelStr, t.GeneralParams.StartIndexVertices, vertexIndex,
+					&fromLabel, &toLabel, E)
+			}
 			vertexIndex++
 			edgeIndex++
 
@@ -133,15 +140,19 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator() (GraphGenerator, error
 					continue
 				}
 
-				fromLabel := labelToString(&stack)
-				fromIndex := stack[len(stack)-1].indexInt
 				stack = append(stack, stackElem{labelInt: currentLabelElem,
 					indexInt: currentIndexElem})
+				fromLabel := labelToString(&stack)
+				fromIndex := stack[len(stack)-1].indexInt
 				toLabel := labelToString(&stack)
-				toIndex := currentIndexElem
-				makeVertex(&t.GeneralParams.Prefix, vertexIndex, &toLabel, V)
-				addEdge(&t.DirectionType, &t.GeneralParams.Prefix, &edgeIndex,
-					&toLabel, fromIndex, toIndex, &fromLabel, &toLabel, E)
+				if makeVertices {
+					makeVertex(&t.GeneralParams.Prefix, vertexIndex, &toLabel, V)
+				}
+				if makeEdges {
+					toIndex := currentIndexElem
+					addEdge(&t.DirectionType, &t.GeneralParams.Prefix, &edgeIndex,
+						&toLabel, fromIndex, toIndex, &fromLabel, &toLabel, E)
+				}
 				edgeIndex++
 				vertexIndex++
 				currentLabelElem = 0

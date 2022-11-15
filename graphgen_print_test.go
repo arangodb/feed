@@ -16,7 +16,7 @@ func TestPrintPath(t *testing.T) {
 	const prefix string = "pr"
 	gg, err := (&graphgen.PathParameters{
 		length, directed, graphgen.GeneralParameters{prefix, startV,
-			startE}}).MakeGraphGenerator()
+			startE}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.PathParameters: ", err)
 	}
@@ -33,7 +33,7 @@ func TestPrintUndirectedPath(t *testing.T) {
 	const prefix string = "pr"
 	gg, err := (&graphgen.PathParameters{
 		length, directed, graphgen.GeneralParameters{prefix, startV,
-			startE}}).MakeGraphGenerator()
+			startE}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.PathParameters: ", err)
 	}
@@ -51,7 +51,7 @@ func TestPrintDownTree(t *testing.T) {
 	const prefix string = "pr"
 	gg, err := (&graphgen.CompleteNaryTreeParameters{
 		branchingDegree, depth, directionType,
-		graphgen.GeneralParameters{prefix, startV, startE}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{prefix, startV, startE}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.CompleteNaryTreeParameters: ", err)
 	}
@@ -67,7 +67,7 @@ func TestPrintDirectedCycle(t *testing.T) {
 	const prefix string = "pr"
 	gg, err := (&graphgen.CycleGraphParameters{
 		length, graphgen.GeneralParameters{prefix, startV,
-			startE}}).MakeGraphGenerator()
+			startE}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.CycleGraphParameters: ", err)
 	}
@@ -83,7 +83,7 @@ func TestPrintEdgeless(t *testing.T) {
 	const prefix string = "pr"
 	gg, err := (&graphgen.EdgelessGraphParameters{
 		size, graphgen.GeneralParameters{prefix, startV,
-			startE}}).MakeGraphGenerator()
+			startE}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.EdgelessGraphParameters: ", err)
 	}
@@ -107,7 +107,7 @@ func TestPrintUnionPathTree(t *testing.T) {
 		&graphgen.CompleteNaryTreeParameters{branchingDegree, depth,
 			directionType, graphgen.GeneralParameters{
 				"b", startV + length + 1, startE + length}},
-		graphgen.GeneralParameters{prefix, startV, startE}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{prefix, startV, startE}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.UnionParameters: ", err)
 	}
@@ -135,7 +135,7 @@ func TestPrintLexprodPathTree(t *testing.T) {
 		&graphgen.CompleteNaryTreeParameters{branchingDegree, depth,
 			directionType, graphgen.GeneralParameters{
 				"b", startV + length + 1, startE + length}},
-		graphgen.GeneralParameters{prefix, startV, startE}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{prefix, startV, startE}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.UnionParameters: ", err)
 	}

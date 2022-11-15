@@ -12,7 +12,8 @@ type PathParameters struct {
 	GeneralParams GeneralParameters
 }
 
-func (p *PathParameters) MakeGraphGenerator() (GraphGenerator, error) {
+func (p *PathParameters) MakeGraphGenerator(
+	makeVertices bool, makeEdges bool) (GraphGenerator, error) {
 
 	V := make(chan *datagen.Doc, BatchSize())
 	E := make(chan *datagen.Doc, BatchSize())
@@ -21,38 +22,46 @@ func (p *PathParameters) MakeGraphGenerator() (GraphGenerator, error) {
 		p.GeneralParams.Prefix += "_"
 	}
 
-	go func() {
-		var i uint64
-		for i = 0; i <= p.Length; i += 1 { // one more vertices than Length
-			label := strconv.FormatUint(i, 10)
-			makeVertex(&p.GeneralParams.Prefix,
-				p.GeneralParams.StartIndexVertices+i, &label, V)
-		}
-		close(V)
-	}()
-
-	go func() {
-		var i uint64
-		edgeIndex := p.GeneralParams.StartIndexEdges
-		for i = 0; i < p.Length; i += 1 {
-			edgeLabel := strconv.FormatUint(i, 10)
-			globalFromIndex := p.GeneralParams.StartIndexVertices + i
-			globalToIndex := p.GeneralParams.StartIndexVertices + i + 1
-			fromLabel := strconv.FormatUint(i, 10)
-			toLabel := strconv.FormatUint(i+1, 10)
-
-			makeEdge(&p.GeneralParams.Prefix, edgeIndex, &edgeLabel,
-				globalFromIndex, globalToIndex, &fromLabel, &toLabel, E)
-			edgeIndex++
-			if !p.Directed {
-				edgeLabel = strconv.FormatUint(edgeIndex, 10)
-				makeEdge(&p.GeneralParams.Prefix, edgeIndex, &edgeLabel,
-					globalToIndex, globalFromIndex, &toLabel, &fromLabel, E)
-				edgeIndex++
+	if makeVertices {
+		go func() {
+			var i uint64
+			for i = 0; i <= p.Length; i += 1 { // one more vertices than Length
+				label := strconv.FormatUint(i, 10)
+				makeVertex(&p.GeneralParams.Prefix,
+					p.GeneralParams.StartIndexVertices+i, &label, V)
 			}
-		}
+			close(V)
+		}()
+	} else {
+		close(V)
+	}
+
+	if makeEdges {
+		go func() {
+			var i uint64
+			edgeIndex := p.GeneralParams.StartIndexEdges
+			for i = 0; i < p.Length; i += 1 {
+				edgeLabel := strconv.FormatUint(i, 10)
+				globalFromIndex := p.GeneralParams.StartIndexVertices + i
+				globalToIndex := p.GeneralParams.StartIndexVertices + i + 1
+				fromLabel := strconv.FormatUint(i, 10)
+				toLabel := strconv.FormatUint(i+1, 10)
+
+				makeEdge(&p.GeneralParams.Prefix, edgeIndex, &edgeLabel,
+					globalFromIndex, globalToIndex, &fromLabel, &toLabel, E)
+				edgeIndex++
+				if !p.Directed {
+					edgeLabel = strconv.FormatUint(edgeIndex, 10)
+					makeEdge(&p.GeneralParams.Prefix, edgeIndex, &edgeLabel,
+						globalToIndex, globalFromIndex, &toLabel, &fromLabel, E)
+					edgeIndex++
+				}
+			}
+			close(E)
+		}()
+	} else {
 		close(E)
-	}()
+	}
 
 	var numEdges uint64
 	if p.Directed {

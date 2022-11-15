@@ -54,7 +54,7 @@ func testExpectedNumberVerticesEdges(t *testing.T, gg graphgen.GraphGenerator,
 func TestCycleGeneration(t *testing.T) {
 	var length uint64 = 5
 	cycleGenerator, err := (&graphgen.CycleGraphParameters{length,
-		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.CycleGraphParameters: ", err)
 	}
@@ -66,7 +66,7 @@ func TestDirectedPathGeneration(t *testing.T) {
 	var length uint64 = 5
 	var directed bool = true
 	pathGenerator, err := (&graphgen.PathParameters{
-		length, directed, graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator()
+		length, directed, graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.PathParameters: ", err)
 	}
@@ -78,7 +78,7 @@ func TestUndirectedPathGeneration(t *testing.T) {
 	var length uint64 = 5
 	var directed bool = false
 	pathGenerator, err := (&graphgen.PathParameters{
-		length, directed, graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator()
+		length, directed, graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.PathParameters: ", err)
 	}
@@ -94,7 +94,7 @@ func TestUnionPathPathGeneration(t *testing.T) {
 			"a", 0, 0}},
 		&graphgen.PathParameters{length, directed, graphgen.GeneralParameters{
 			"b", length + 1, length}},
-		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.UnionParameters or in graphgen.PathParameters: ", err)
 	}
@@ -111,7 +111,7 @@ func TestDirectedTreeGeneration(t *testing.T) {
 	var directionType string = "downwards"
 	var prefix string = ""
 	treeGenerator, err := (&graphgen.CompleteNaryTreeParameters{branchingDegree,
-		depth, directionType, graphgen.GeneralParameters{prefix, 0, 0}}).MakeGraphGenerator()
+		depth, directionType, graphgen.GeneralParameters{prefix, 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.CompleteNaryTreeParameters: ", err)
 	}
@@ -130,7 +130,7 @@ func TestUndirectedTreeGeneration(t *testing.T) {
 	var prefix string = ""
 	treeGenerator, err := (&graphgen.CompleteNaryTreeParameters{
 		branchingDegree, depth, directionType,
-		graphgen.GeneralParameters{prefix, 0, 0}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{prefix, 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.CompleteNaryTreeParameters: ", err)
 	}
@@ -150,7 +150,7 @@ func TestTreeHasNo__(t *testing.T) {
 	var prefix string = ""
 	treeGenerator, err := (&graphgen.CompleteNaryTreeParameters{branchingDegree,
 		depth, directionType,
-		graphgen.GeneralParameters{prefix, 0, 0}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{prefix, 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.CompleteNaryTreeParameters: ", err)
 	}
@@ -171,7 +171,7 @@ func TestPathHasNo__(t *testing.T) {
 	var prefix string = ""
 	pathGenerator, err := (&graphgen.PathParameters{
 		length, directed,
-		graphgen.GeneralParameters{prefix, 0, 0}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{prefix, 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.PathParameters: ", err)
 	}
@@ -194,7 +194,7 @@ func TestUnionHasNo__(t *testing.T) {
 			graphgen.GeneralParameters{"a", 0, 0}},
 		&graphgen.PathParameters{length, directed,
 			graphgen.GeneralParameters{"b", length + 1, length}},
-		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.UnionParameters: ", err)
 	}
@@ -217,7 +217,7 @@ func TestLexProductHasNo__(t *testing.T) {
 			graphgen.GeneralParameters{"a", 0, 0}},
 		&graphgen.PathParameters{length, directed,
 			graphgen.GeneralParameters{"b", length + 1, length}},
-		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.LexicographicalProductParameters or in graphgen.PathParameters: ", err)
 	}
@@ -240,7 +240,7 @@ func TestLexProdPathPathGenerator(t *testing.T) {
 			graphgen.GeneralParameters{"a", 0, 0}},
 		&graphgen.PathParameters{length, directed,
 			graphgen.GeneralParameters{"b", length + 1, length}},
-		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		t.Error("Error in graphgen.LexicographicalProductParameters or in graphgen.PathParameters: ", err)
 	}
@@ -266,7 +266,7 @@ func TestReadJSONTree(t *testing.T) {
 	if err != nil {
 		log.Panicf("Could not read from file %s, error: %v", filename, err)
 	}
-	gg, err := graphgen.JSON2Graph(buf)
+	gg, err := graphgen.JSON2Graph(buf, true, true)
 	if err != nil {
 		t.Error("Error in JSON2Graph: ", err)
 	}
@@ -297,7 +297,7 @@ func TestReadJSONLexProdUnionTreePathTree(t *testing.T) {
 	if err != nil {
 		log.Panicf("Could not read from file %s, error: %v", filename, err)
 	}
-	gg, errJSON2Graph := graphgen.JSON2Graph(buf)
+	gg, errJSON2Graph := graphgen.JSON2Graph(buf, true, true)
 	if errJSON2Graph != nil {
 		t.Error("Error in JSON2Graph: ", err)
 	}
@@ -322,7 +322,7 @@ func TestReadJSONCycle(t *testing.T) {
 	if err != nil {
 		log.Panicf("Could not read from file %s, error: %v", filename, err)
 	}
-	gg, errJSON2Graph := graphgen.JSON2Graph(buf)
+	gg, errJSON2Graph := graphgen.JSON2Graph(buf, true, true)
 	if errJSON2Graph != nil {
 		t.Error("Error in JSON2Graph: ", err)
 	}

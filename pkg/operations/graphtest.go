@@ -31,7 +31,7 @@ type cycleGraphParameters graphgen.CycleGraphParameters
 
 func (cp *cycleGraphParameters) Execute() error {
 	cycleGenerator, err := (&graphgen.CycleGraphParameters{cp.Length,
-		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator()
+		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func (pp *pathGraphParameters) Execute() error {
 		pp.Length, pp.Directed, graphgen.GeneralParameters{
 			pp.GeneralParams.Prefix,
 			pp.GeneralParams.StartIndexVertices,
-			pp.GeneralParams.StartIndexEdges}}).MakeGraphGenerator()
+			pp.GeneralParams.StartIndexEdges}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		return err
 	}

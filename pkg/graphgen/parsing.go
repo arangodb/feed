@@ -201,7 +201,7 @@ func parseJSONtoGraph(f map[string]any,
 	return errorResult(&err)
 }
 
-func JSON2Graph(jsonGraph []byte) (GraphGenerator, error) {
+func JSON2Graph(jsonGraph []byte, makeVertices bool, makeEdges bool) (GraphGenerator, error) {
 	var f map[string]any
 	err := json.Unmarshal(jsonGraph, &f)
 	if err != nil {
@@ -211,7 +211,7 @@ func JSON2Graph(jsonGraph []byte) (GraphGenerator, error) {
 	if result.err != nil {
 		log.Printf("Could not produce a graph generator from the given JSON, error: %v", err)
 	}
-	gg, err := (*result.gg).MakeGraphGenerator()
+	gg, err := (*result.gg).MakeGraphGenerator(makeVertices, makeEdges)
 	if err != nil {
 		return nil, err
 	}

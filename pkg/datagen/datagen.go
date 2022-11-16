@@ -41,7 +41,7 @@ type Doc struct {
 	Key string `json:"_key"`
 	// Index: from 0 to some n-1, unique and global in the whole graph
 	// For vertices only.
-	Index uint64
+	Index uint64 `json:"-"`
 	Sha   string `json:"sha"`
 	// Label == prefix + "_" + localIndex (or == localIndex if prefix is empty)
 	// Here prefix encodes the position
@@ -52,8 +52,8 @@ type Doc struct {
 	Label string `json:"label,omitempty"`
 	// For edges only, the hash value of Index of the from vertex
 	From      string `json:"_from,omitempty"`
-	FromIndex uint64 `json:"fromIndex,omitempty"`
-	ToIndex   uint64 `json:"fromIndex,omitempty"`
+	FromIndex uint64 `json:"-"`
+	ToIndex   uint64 `json:"-"`
 	// For edges only, the hash value of Index of the to vertex
 	To string `json:"_to,omitempty"`
 	// For edges only, the Label of the from vertex

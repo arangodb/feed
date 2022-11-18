@@ -21,7 +21,7 @@ There are two ways how a graph can be produced by `graphgen`:
 
 - automatically from a `JSON` document with a description of the graph and
 - manually by calling the respective function.
-  In general, the automatic way should be the preferred one: it managers a complicated
+  In general, the automatic way should be the preferred one: it manages a complicated
   interplay between parameters that have to be managed by hand otherwise. In simple cases,
   it may be easier and quicker to use the manual interface.
 

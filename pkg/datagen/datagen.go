@@ -37,11 +37,29 @@ type Poly struct {
 }
 
 type Doc struct {
-	Key      string `json:"_key"`
-	Sha      string `json:"sha"`
-	Label    string `json:"label,omitempty"`
-	From     string `json:"_from,omitempty"`
-	To       string `json:"_to,omitempty"`
+	// Key is for the database, it is the hash value of Index
+	Key string `json:"_key"`
+	// Index: from 0 to some n-1, unique and global in the whole graph
+	// For vertices only.
+	Index uint64 `json:"-"`
+	Sha   string `json:"sha"`
+	// Label == prefix + "_" + localIndex (or == localIndex if prefix is empty)
+	// Here prefix encodes the position
+	// in the graph parse tree and local index is from 0 to some n-1 and
+	// local w.r.t. the leaf in the parse tree where the vertex/edge
+	// is constructed.
+	// If prefix is empty, then Label == local
+	Label string `json:"label,omitempty"`
+	// For edges only, the hash value of Index of the from vertex
+	From      string `json:"_from,omitempty"`
+	FromIndex uint64 `json:"-"`
+	ToIndex   uint64 `json:"-"`
+	// For edges only, the hash value of Index of the to vertex
+	To string `json:"_to,omitempty"`
+	// For edges only, the Label of the from vertex
+	FromLabel string `json:"fromId,omitempty"`
+	// For edges only, the Label of the to vertex
+	ToLabel  string `json:"toId,omitempty"`
 	Payload0 string `json:"payload0"`
 	Payload1 string `json:"payload1,omitempty"`
 	Payload2 string `json:"payload2,omitempty"`
@@ -105,13 +123,21 @@ func makeRandomWords(nr int, source *rand.Rand) string {
 	return string(b)
 }
 
-func KeyFromIndex(index int64) string {
+func KeyFromIndex(index uint64) string {
 	x := fmt.Sprintf("%d", index)
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(x)))
 }
 
+func KeyFromLabel(label string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(label)))
+}
+
+func LabelFromIndex(prefix string, index uint64) string {
+	return fmt.Sprintf("%s_%d", prefix, index)
+}
+
 func (doc *Doc) ShaKey(index int64, keySize int) {
-	doc.Sha = KeyFromIndex(index)
+	doc.Sha = KeyFromIndex(uint64(index))
 	doc.Key = doc.Sha[0:keySize]
 }
 
@@ -210,7 +236,7 @@ type GraphGenerator interface {
 }
 
 type Cyclic struct {
-	n int64 // Number of vertices
+	n uint64 // Number of vertices
 	V chan *Doc
 	E chan *Doc
 }
@@ -223,13 +249,13 @@ func (c *Cyclic) EdgeChannel() chan *Doc {
 	return c.E
 }
 
-func NewCyclicGraph(n int64) GraphGenerator {
+func NewCyclicGraph(n uint64) GraphGenerator {
 	// Will automatically be generated on the heap by escape analysis:
 	c := Cyclic{n: n, V: make(chan *Doc, 1000), E: make(chan *Doc, 1000)}
 
 	go func() { // Sender for vertices
 		// Has access to c because it is a closure
-		var i int64
+		var i uint64
 		for i = 1; i <= c.n; i += 1 {
 			var d Doc
 			d.Label = strconv.Itoa(int(i))
@@ -240,13 +266,13 @@ func NewCyclicGraph(n int64) GraphGenerator {
 
 	go func() { // Sender for edges
 		// Has access to c because it is a closure
-		var i int64
-		for i = 1; i <= c.n; i += 1 {
+		var i uint64
+		for i = 1; uint64(i) <= c.n; i += 1 {
 			var d Doc
 			d.Label = strconv.Itoa(int(i))
 			d.From = KeyFromIndex(i)
 			to := i + 1
-			if to > c.n {
+			if uint64(to) > c.n {
 				to = 1
 			}
 			d.To = KeyFromIndex(to)

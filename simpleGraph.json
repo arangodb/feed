@@ -1,0 +1,6 @@
+{
+	"union": [
+		{"tree": {"branchingDegree": 2, "depth": 1, "directionType": "downwards"}},
+		{"path": {"length": 1, "directed": true}}
+	]
+}

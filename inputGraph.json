@@ -1,0 +1,39 @@
+{
+  "union": [
+    {
+      "union": [
+        {
+          "union": [
+            {
+              "path": {
+                "length": 6,
+                "directedType": "bidirected"
+              }
+            },
+            {
+              "path": {
+                "length": 2,
+                "directedType": "bidirected"
+              }
+            }
+          ]
+        },
+        {
+          "path": {
+            "length": 4,
+            "directedType": "bidirected"
+          }
+        }
+      ]
+    },
+    {
+      "multiplyEdges": {
+        "path": {
+          "length": 5,
+          "directedType": "downwards"
+        },
+        "factor": 3
+      }
+    }
+  ]
+}

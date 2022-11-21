@@ -81,7 +81,7 @@ func CreateOrGetDatabaseCollection(ctx context.Context, client driver.Client, DB
 
 func RunParallel(parallelism int64, startDelay int64, jobName string,
 	action func(id int64) error,
-	finalReport func(totalTime time.Duration, haveError bool)) error {
+	finalReport func(totalTime time.Duration, haveError bool) error) error {
 	totaltimestart := time.Now()
 	wg := sync.WaitGroup{}
 	haveError := false
@@ -114,7 +114,10 @@ func RunParallel(parallelism int64, startDelay int64, jobName string,
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
 	if finalReport != nil {
-		finalReport(totaltime, haveError)
+		err := finalReport(totaltime, haveError)
+		if err != nil {
+			return fmt.Errorf("Error in job %s.", jobName)
+		}
 	}
 	if !haveError {
 		return nil

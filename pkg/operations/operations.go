@@ -1,6 +1,8 @@
 package operations
 
 import (
+	"bytes"
+	"encoding/json"
 	"github.com/arangodb/feed/pkg/config"
 	"github.com/arangodb/feed/pkg/feedlang"
 
@@ -149,7 +151,7 @@ func (d DurationSlice) Swap(a, b int) {
 	d[b] = dummy
 }
 
-func WriteStatisticsForTimes(times []time.Duration, msg string) {
+func WriteStatisticsForTimes(times []time.Duration, msg string, isJSON bool) error {
 	sort.Sort(DurationSlice(times))
 	var sum int64 = 0
 	for _, t := range times {
@@ -157,12 +159,37 @@ func WriteStatisticsForTimes(times []time.Duration, msg string) {
 	}
 	nr := int64(len(times))
 
-	config.OutputMutex.Lock()
-	fmt.Printf("%s:\n  %s (median),\n  %s (90%%ile),\n  %s (99%%ilie),\n  %s (average)\n",
-		msg,
-		times[int(float64(0.5)*float64(nr))],
-		times[int(float64(0.9)*float64(nr))],
-		times[int(float64(0.99)*float64(nr))],
-		time.Duration(sum/nr))
-	config.OutputMutex.Unlock()
+	median := times[int(float64(0.5)*float64(nr))]
+	percentile90 := times[int(float64(0.9)*float64(nr))]
+	percentile99 := times[int(float64(0.99)*float64(nr))]
+	average := time.Duration(sum / nr)
+	if isJSON {
+		msgJSON := `{"generalStats": ` + msg + fmt.Sprintf(`, "timeStats": {"median": "%s", "percentile90": "%s", "percentile99": "%s", "average": "%s"}}`, median, percentile90, percentile99, average)
+		msgJSON, err := PrettyPrintToJSON(msgJSON)
+		if err != nil {
+			return fmt.Errorf("can not write statistics in JSON format: %v", err)
+		}
+		config.OutputMutex.Lock()
+		fmt.Printf(msgJSON)
+		config.OutputMutex.Unlock()
+	} else {
+		config.OutputMutex.Lock()
+		fmt.Printf("%s:\n  %s (median),\n  %s (90%%ile),\n  %s (99%%ilie),\n  %s (average)\n",
+			msg,
+			median,
+			percentile90,
+			percentile99,
+			average,
+		)
+		config.OutputMutex.Unlock()
+	}
+	return nil
+}
+
+func PrettyPrintToJSON(str string) (string, error) {
+	var prettyJSON bytes.Buffer
+	if err := json.Indent(&prettyJSON, []byte(str), "", "    "); err != nil {
+		return "", err
+	}
+	return prettyJSON.String(), nil
 }

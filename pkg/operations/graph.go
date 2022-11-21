@@ -21,6 +21,7 @@ type GraphProg struct {
 	EdgeCollName   string
 	GraphType      string
 	GraphSize      int64
+	OutFormat      string
 }
 
 var (
@@ -48,6 +49,7 @@ func NewGraphProg(args []string) (feedlang.Program, error) {
 		EdgeCollName:   GetStringValue(m, "edgeColl", "E"),
 		GraphType:      GetStringValue(m, "type", "cyclic"),
 		GraphSize:      GetInt64Value(m, "graphSize", 2000),
+		OutFormat:      GetStringValue(m, "outFormat", ""),
 	}
 
 	if _, hasKey := graphSubprograms[subCmd]; !hasKey {
@@ -101,6 +103,10 @@ func (gp *GraphProg) Create() error {
 }
 
 func (gp *GraphProg) Insert(what string) error {
+	isJSON, err := ValidateOutFormat(gp.OutFormat)
+	if err != nil {
+		return fmt.Errorf("\ngraph: can not obtain output format, %v", err)
+	}
 
 	// Derive and check some arguments:
 	if gp.DocConfig.KeySize < 1 || gp.DocConfig.KeySize > 64 {
@@ -117,7 +123,6 @@ func (gp *GraphProg) Insert(what string) error {
 		return fmt.Errorf("Unknown graph type: %s", gp.GraphType)
 	}
 
-	var err error
 	var numberDocs int64
 	var numberBatches int64
 	var ch chan *datagen.Doc
@@ -215,19 +220,39 @@ func (gp *GraphProg) Insert(what string) error {
 			totaltime := time.Now().Sub(cyclestart)
 			docspersec := float64(nrDocs) / (float64(totaltime) / float64(time.Second))
 
-			WriteStatisticsForTimes(times,
-				fmt.Sprintf("\ngraph: Times for inserting %d batches.\n  docs per second in this go routine: %f", i, docspersec))
-
+			if isJSON {
+				err = WriteStatisticsForTimes(times,
+					fmt.Sprintf("{graph: {numBatches: %d,  docsPerSec: %f}}", i, docspersec), isJSON)
+			} else {
+				err = WriteStatisticsForTimes(times,
+					fmt.Sprintf("\ngraph: Times for inserting %d batches.\n  docs per second in this go routine: %f", i, docspersec), isJSON)
+			}
+			if err != nil {
+				return fmt.Errorf("\ngraph: can not write statistics in JSON format %v", err)
+			}
 			return nil
 		},
-		func(totaltime time.Duration, haveError bool) {
+		func(totaltime time.Duration, haveError bool) error {
 			batchesPerSec := float64(numberBatches) / (float64(totaltime) / float64(time.Second))
 			docspersec := float64(numberDocs) / (float64(totaltime) / float64(time.Second))
+			var msg string
+			if isJSON {
+				msg = fmt.Sprintf("graph: {totalDocsWritten: %d, totalTime: %v, totalBatchesPerSec: %f, totalDocsPerSec: %f, hadErrors: %v}}",
+					numberDocs, totaltime, batchesPerSec, docspersec,
+					haveError)
+				msg, err = PrettyPrintToJSON(msg)
+				if err != nil {
+					return fmt.Errorf("can not write statistics in JSON format: %v", err)
+				}
+			} else {
+				msg = fmt.Sprintf("\ngraph: Total number of documents written: %d,\n  total time: %v,\n  total batches per second: %f,\n  total docs per second: %f\n  had errors: %v\n\n",
+					numberDocs, totaltime, batchesPerSec, docspersec,
+					haveError)
+			}
 			config.OutputMutex.Lock()
-			fmt.Printf("\ngraph: Total number of documents written: %d,\n  total time: %v,\n  total batches per second: %f,\n  total docs per second: %f\n  had errors: %v\n\n",
-				numberDocs, totaltime, batchesPerSec, docspersec,
-				haveError)
+			fmt.Printf(msg)
 			config.OutputMutex.Unlock()
+			return nil
 		},
 	)
 	if err != nil {

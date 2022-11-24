@@ -1,5 +1,5 @@
 [
 graph create name=G vertexColl=V edgeColl=E numberOfShards:3 replicationFactor:2 drop=true
-graph insertVertices name=G type=cyclic graphSize=1000 vertexColl=V size=100K parallelism=2
-graph insertEdges name=G type=cyclic graphSize=1000 edgeColl=E size=100K parallelism=2
+graph insertVertices name=G type=cyclic graphSize=10 vertexColl=V size=10K parallelism=2
+graph insertEdges name=G type=cyclic graphSize=10 edgeColl=E size=10K parallelism=2
 ]

@@ -11,17 +11,23 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"os"
 	"time"
 )
 
 type GraphProg struct {
-	NormalProg     // embedded
-	GraphName      string
-	VertexCollName string
-	EdgeCollName   string
-	GraphType      string
-	GraphSize      int64
-	OutFormat      string
+	NormalProg      // embedded
+	GraphName       string
+	VertexCollName  string
+	EdgeCollName    string
+	GraphType       string
+	GraphSize       uint64
+	JSONFile        string
+	OutFormat       string
+	BranchingDegree uint64
+	Depth           uint64
+	DirectionType   string
+	Directed        bool
 }
 
 var (
@@ -43,13 +49,18 @@ func NewGraphProg(args []string) (feedlang.Program, error) {
 
 	// Now parse for the graph specific stuff:
 	var gp *GraphProg = &GraphProg{
-		NormalProg:     *(np), // shallow copy
-		GraphName:      GetStringValue(m, "name", "G"),
-		VertexCollName: GetStringValue(m, "vertexColl", "V"),
-		EdgeCollName:   GetStringValue(m, "edgeColl", "E"),
-		GraphType:      GetStringValue(m, "type", "cyclic"),
-		GraphSize:      GetInt64Value(m, "graphSize", 2000),
-		OutFormat:      GetStringValue(m, "outFormat", ""),
+		NormalProg:      *(np), // shallow copy
+		GraphName:       GetStringValue(m, "name", "G"),
+		VertexCollName:  GetStringValue(m, "vertexColl", "V"),
+		EdgeCollName:    GetStringValue(m, "edgeColl", "E"),
+		GraphType:       GetStringValue(m, "type", "cyclic"),
+		GraphSize:       uint64(GetInt64Value(m, "graphSize", 2000)),
+		JSONFile:        GetStringValue(m, "graphDesc", "graph.json"),
+		OutFormat:       GetStringValue(m, "outFormat", ""),
+		BranchingDegree: uint64(GetInt64Value(m, "brachingDegree", 2)),
+		Depth:           uint64(GetInt64Value(m, "depth", 5)),
+		DirectionType:   GetStringValue(m, "direction", "downwards"),
+		Directed:        GetBoolValue(m, "directed", true),
 	}
 
 	if _, hasKey := graphSubprograms[subCmd]; !hasKey {
@@ -114,11 +125,51 @@ func (gp *GraphProg) Insert(what string) error {
 	}
 
 	var gg graphgen.GraphGenerator
+	var makeVertices bool = (what == "vertices")
+	var makeEdges bool = (what == "edges")
+
+	gparams := graphgen.GeneralParameters{
+		Prefix:             "",
+		StartIndexVertices: 0,
+		StartIndexEdges:    0}
+	if makeEdges {
+		gparams.Prefix = gp.EdgeCollName + "/"
+	}
 
 	switch gp.GraphType {
 	case "cyclic":
-		gg, _ = (&graphgen.CycleGraphParameters{uint64(gp.GraphSize),
-			graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
+		gg, _ = (&graphgen.CycleGraphParameters{Length: uint64(gp.GraphSize),
+			GeneralParams: gparams}).MakeGraphGenerator(makeVertices, makeEdges)
+	case "json":
+		buffer, err := os.ReadFile(gp.JSONFile)
+		if err != nil {
+			return fmt.Errorf("\ngraph: cannot read graph description from file %s, error: %v", gp.JSONFile, err)
+		}
+		gg, err = graphgen.JSON2Graph(buffer, makeVertices, makeEdges)
+		if err != nil {
+			return fmt.Errorf("\ngraph: cannot parse graph description file %s, error: %v", gp.JSONFile, err)
+		}
+	case "tree":
+		params := graphgen.CompleteNaryTreeParameters{
+			BranchingDegree: gp.BranchingDegree,
+			Depth:           gp.Depth,
+			DirectionType:   gp.DirectionType,
+			GeneralParams:   gparams,
+		}
+		gg, err = params.MakeGraphGenerator(makeVertices, makeEdges)
+		if err != nil {
+			return fmt.Errorf("\ngraph: cannot instantiate tree graph generator for parameters %v, error: %v", params, err)
+		}
+	case "path":
+		params := graphgen.PathParameters{
+			Length:        gp.GraphSize,
+			Directed:      gp.Directed,
+			GeneralParams: gparams,
+		}
+		gg, err = params.MakeGraphGenerator(makeVertices, makeEdges)
+		if err != nil {
+			return fmt.Errorf("\ngraph: cannot instantiate path graph generator for parameters %v, error: %v", params, err)
+		}
 	default:
 		return fmt.Errorf("Unknown graph type: %s", gp.GraphType)
 	}

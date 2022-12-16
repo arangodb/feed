@@ -73,9 +73,11 @@ Flags:
  - `insertvertices`: for graph cases, insert vertex data
  - `insertedges`: for graph cases, insert edge data
  - `createIdx`: create an index
+ - `dropIdx`: drop an index
  - `randomRead`: read documents randomly in parallel
  - `randomUpdate`: perform updates in documents randomly in parallel
  - `randomReplace`: perform replacements of documents in parallel
+ - `dropDatabase`: drop a database
 
 ## `feedlang` reference
 
@@ -121,6 +123,19 @@ Possible parameters for usage:
 - `withGeo`: whether or not it's a geo index (default: `false`)
 - `numberFields`: number of fields the index will cover (default: `1`)
 - `idxName`: user-defined name for the index. Leading and trailing quotes are ignored. (default: `"idx" + random number ex. idx123`)
+
+## Subcommand `dropIdx`
+Drops an index.
+
+Example of usage:
+
+`normal dropIdx database=xyz collection=c idxName=myIdx`
+
+Possible parameters for usage:
+
+- `database`: name of the database where the index will be dropped (default: `_system`)
+- `collection`: name of the collection where the index will be dropped (default: `batchimport`)
+- `idxName`: user-defined name for the index. Leading and trailing quotes are ignored.
 
 ## Subcommand `queryOnIdx`
 Runs queries that will use a specific index in parallel, meaning the query will perform an operation that uses an attribute that is covered by the index so that it is actively used during the query execution.
@@ -178,4 +193,14 @@ Possible parameters for usage:
 - `collection`: name of the collection where the random replaces will be executed (default: `batchimport`)
 - `parallelism`: number of threads to execute the replaces concurrently (default: `16`)
 - `loadPerThread`: number of times each thread executes random replaces (default: `50`)
+
+## Subcommand `dropDatabase`
+Drops a database.
+
+Example of usage:
+
+`normal dropDatabase database=xyz`
+
+Possible parameters for usage:
+- `database`: name of the database which will be dropped
 

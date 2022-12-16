@@ -43,6 +43,7 @@ Done:
  - Metrics. (Max)
  - Truncate collection job. (Max)
  - Drop index job. (Max)
+ - Drop database job. (Max)
 
 
 

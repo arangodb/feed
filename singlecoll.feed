@@ -11,4 +11,6 @@ normal dropIdx database=xyz collection=c idxName=abc
 wait 15
 normal drop database=xyz collection=c
 wait 15
+normal dropDatabase database=xyz
+wait 15
 ]

@@ -57,7 +57,7 @@ var (
 	normalSubprograms  = map[string]struct{}{"create": {}, "insert": {},
 		"randomRead": {}, "randomUpdate": {}, "randomReplace": {},
 		"createIdx": {}, "dropIdx": {}, "queryOnIdx": {}, "drop": {},
-		"truncate": {},
+		"truncate": {}, "dropDatabase": {},
 	}
 )
 
@@ -163,6 +163,26 @@ func (np *NormalProg) DoDrop(cl driver.Client) error {
 
 	fmt.Printf("normal: Database %s found and collection %s successfully dropped.\n", np.Database, np.Collection)
 	metrics.CollectionsDropped.Inc()
+	return nil
+}
+
+func (np *NormalProg) DropDatabase(cl driver.Client) error {
+	if np.Database == "_system" {
+		return fmt.Errorf("Cannot drop _system database.")
+	}
+	db, err := cl.Database(nil, np.Database)
+	if err != nil {
+		return fmt.Errorf("Could not open database %s: %v\n", np.Database, err)
+	}
+	err = db.Remove(nil)
+	if err != nil {
+		return fmt.Errorf("Could not drop database %s: %v\n", np.Database, err)
+	}
+
+	config.OutputMutex.Lock()
+	fmt.Printf("normal: Database %s dropped successfully.\n", np.Database)
+	config.OutputMutex.Unlock()
+	metrics.DatabasesDropped.Inc()
 	return nil
 }
 
@@ -551,7 +571,6 @@ func dropIdx(np *NormalProg) error {
 	} else {
 		found := false
 		for _, ind := range indexes {
-			fmt.Printf("Index: %v\n, Name: %s\n", ind, ind.UserName())
 			if ind.UserName() == idxName {
 				found = true
 				err = ind.Remove(ctx)
@@ -1088,6 +1107,8 @@ func (np *NormalProg) Execute() error {
 		return np.DropIdx(cl)
 	case "queryOnIdx":
 		return np.RunQueryOnIdx(cl)
+	case "dropDatabase":
+		return np.DropDatabase(cl)
 	}
 	return nil
 }

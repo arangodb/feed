@@ -6,6 +6,10 @@ import (
 )
 
 var (
+	DatabasesDropped = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feed_databases_dropped_total",
+		Help: "The total number of databases dropped.",
+	})
 	CollectionsCreated = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "feed_collections_created_total",
 		Help: "The total number of collections created.",

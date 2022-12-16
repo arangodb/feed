@@ -3,7 +3,6 @@ Let's put in brackets after the description the name of a person who
 grabs the task and starts working on it.
 
  - Design graph traversal use cases. (Markus)
- - Implement graph producing job. (Max)
 
  - Implement a job which creates a search view on a collection.
  - Implement a random graph use case.
@@ -44,6 +43,4 @@ Done:
  - Truncate collection job. (Max)
  - Drop index job. (Max)
  - Drop database job. (Max)
-
-
-
+ - Implement graph producing job. (Max)

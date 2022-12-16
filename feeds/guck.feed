@@ -1,0 +1,4 @@
+[
+normal create collection=c numberOfShards=3 replicationFactor=3 drop=true
+normal insert collection=c size=1G documentSize=300 withGeo=true withWords=5 parallelism=10 numberFields=5 outFormat=json
+]

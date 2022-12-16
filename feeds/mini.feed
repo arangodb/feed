@@ -1,0 +1,1 @@
+normal create database=xyz collection=c numberOfShards=3 replicationFactor=3 drop=true

@@ -141,7 +141,8 @@ func (gp *GraphProg) Insert(what string) error {
 	gp.DocConfig.SizePerDoc = gp.DocConfig.Size / numberDocs
 
 	config.OutputMutex.Lock()
-	fmt.Printf("\ngraph (%s): Will write %d batches of %d docs across %d goroutines...\n\n", what, numberBatches, gp.BatchSize, gp.Parallelism)
+	fmt.Printf("\ngraph (%s): Will write %d batches of %d docs across %d goroutines...\n\n",
+		what, numberBatches, gp.BatchSize, gp.Parallelism)
 	config.OutputMutex.Unlock()
 
 	err = database.RunParallel(gp.Parallelism, gp.StartDelay, "graph",

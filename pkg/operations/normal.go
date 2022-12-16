@@ -8,6 +8,7 @@ import (
 	"github.com/arangodb/feed/pkg/database"
 	"github.com/arangodb/feed/pkg/datagen"
 	"github.com/arangodb/feed/pkg/feedlang"
+	"github.com/arangodb/feed/pkg/metrics"
 	"github.com/arangodb/go-driver"
 	"math/rand"
 	"strconv"
@@ -139,6 +140,49 @@ func (np *NormalProg) Create(cl driver.Client) error {
 		return fmt.Errorf("Error: could not create collection %s: %v", np.Collection, err)
 	}
 	fmt.Printf("normal: Database %s and collection %s successfully created.\n", np.Database, np.Collection)
+	metrics.CollectionsCreated.Inc()
+	return nil
+}
+
+func (np *NormalProg) DoDrop(cl driver.Client) error {
+	db, err := database.CreateOrGetDatabase(nil, cl, np.Database,
+		&driver.CreateDatabaseOptions{})
+	if err != nil {
+		return fmt.Errorf("Could not create/open database %s: %v\n", np.Database, err)
+	}
+	ec, err := db.Collection(nil, np.Collection)
+	if err == nil {
+		err = ec.Remove(nil)
+		if err != nil {
+			return fmt.Errorf("Could not drop collection %s: %v\n", np.Collection, err)
+		}
+	} else if !driver.IsNotFound(err) {
+		return fmt.Errorf("Error: could not look for collection %s: %v\n", np.Collection, err)
+	}
+
+	fmt.Printf("normal: Database %s found and collection %s successfully dropped.\n", np.Database, np.Collection)
+	metrics.CollectionsDropped.Inc()
+	return nil
+}
+
+func (np *NormalProg) Truncate(cl driver.Client) error {
+	db, err := database.CreateOrGetDatabase(nil, cl, np.Database,
+		&driver.CreateDatabaseOptions{})
+	if err != nil {
+		return fmt.Errorf("Could not create/open database %s: %v\n", np.Database, err)
+	}
+	ec, err := db.Collection(nil, np.Collection)
+	if err == nil {
+		err = ec.Truncate(nil)
+		if err != nil {
+			return fmt.Errorf("Could not truncate collection %s: %v\n", np.Collection, err)
+		}
+	} else if !driver.IsNotFound(err) {
+		return fmt.Errorf("Error: could not look for collection %s: %v\n", np.Collection, err)
+	}
+
+	fmt.Printf("normal: Database %s found and collection %s successfully truncated.\n", np.Database, np.Collection)
+	metrics.CollectionsTruncated.Inc()
 	return nil
 }
 
@@ -181,6 +225,7 @@ func (np *NormalProg) CreateIdx(cl driver.Client) error {
 	if err := createIdx(np); err != nil {
 		return fmt.Errorf("can not create index")
 	}
+	metrics.IndexesCreated.Inc()
 
 	return nil
 }
@@ -286,6 +331,8 @@ func runQueryOnIdxInParallel(np *NormalProg) error {
 			if err != nil {
 				return fmt.Errorf("Can not execute query on index %v\n", err)
 			}
+			metrics.DocumentsRead.Add(float64(np.QueryLimit))
+			metrics.BatchesRead.Inc()
 			times = append(times, time.Now().Sub(start))
 		}
 		totaltime := time.Now().Sub(cyclestart)
@@ -519,6 +566,8 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 					}
 				}
 			}
+			metrics.DocumentsReplaced.Add(float64(batchSizeLimit))
+			metrics.BatchesReplaced.Inc()
 
 			times = append(times, time.Now().Sub(start))
 		}
@@ -644,6 +693,8 @@ func updateRandomlyInParallel(np *NormalProg) error {
 					}
 				}
 			}
+			metrics.BatchesUpdated.Add(float64(batchSizeLimit))
+			metrics.BatchesUpdated.Inc()
 			times = append(times, time.Now().Sub(start))
 		}
 		totaltime := time.Now().Sub(cyclestart)
@@ -735,9 +786,10 @@ func readRandomlyInParallel(np *NormalProg) error {
 			_, err := coll.ReadDocument(ctx, doc.Key, &doc2)
 			if err != nil {
 				return fmt.Errorf("Can not read document with _key %s %v\n", doc.Key, err)
-			} else {
-				times = append(times, time.Now().Sub(start))
 			}
+			metrics.DocumentsRead.Inc()
+			metrics.BatchesRead.Inc()
+			times = append(times, time.Now().Sub(start))
 		}
 		totaltime := time.Now().Sub(cyclestart)
 		readspersec := float64(np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
@@ -829,6 +881,8 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 				fmt.Printf("writeSomeBatches: could not write batch: %v\n", err)
 				return err
 			}
+			metrics.DocumentsInserted.Add(float64(np.BatchSize))
+			metrics.BatchesInserted.Inc()
 			docs = docs[0:0]
 			times = append(times, time.Now().Sub(start))
 			if i%100 == 0 {
@@ -903,6 +957,10 @@ func (np *NormalProg) Execute() error {
 	switch np.SubCommand {
 	case "create":
 		return np.Create(cl)
+	case "drop":
+		return np.DoDrop(cl)
+	case "truncate":
+		return np.Truncate(cl)
 	case "insert":
 		return np.Insert(cl)
 	case "randomRead":

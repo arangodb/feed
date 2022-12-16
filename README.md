@@ -67,6 +67,8 @@ Flags:
 ## Operation cases
 
  - `create`: create collection or graph
+ - `drop`: drop a collection
+ - `truncate`: trunacte a collection
  - `insert`: bulk insert data
  - `insertvertices`: for graph cases, insert vertex data
  - `insertedges`: for graph cases, insert edge data

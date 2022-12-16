@@ -11,6 +11,7 @@ import (
 
 var (
 	Endpoints   []string
+	MetricsPort int
 	Verbose     bool
 	Jwt         string
 	Username    string

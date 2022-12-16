@@ -4,11 +4,14 @@ import (
 	"fmt"
 
 	"bufio"
+	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/arangodb/feed/pkg/config"
 	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/feed/pkg/operations"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 )
 
@@ -29,12 +32,22 @@ func init() {
 	flags.StringVar(&config.Password, "password", "", "Password for database access.")
 	flags.StringVar(&ProgName, "execute", "prog.feed", "Filename of program to execute.")
 	flags.StringVar(&config.Protocol, "protocol", "vst", "Protocol (http1, http2, vst)")
+	flags.IntVar(&config.MetricsPort, "metricsPort", 8888, "Metrics port (0 for no metrics)")
 }
 
 func mainExecute(cmd *cobra.Command, _ []string) error {
-	fmt.Printf("Hello world, this is 'feed'!\n")
 
-	// sample.Doit(config.Endpoints, Jwt, Username, Password)
+	fmt.Printf("Hello world, this is 'feed'!\n\n")
+
+	// Expose metrics:
+	if config.MetricsPort != 0 {
+		fmt.Printf("Exposing Prometheus metrics on port %d under /metrics...\n\n",
+			config.MetricsPort)
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			http.ListenAndServe(":"+strconv.Itoa(config.MetricsPort), nil)
+		}()
+	}
 
 	inputLines := make([]string, 0, 100)
 	file, err := os.Open(ProgName)

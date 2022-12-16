@@ -1,0 +1,4 @@
+[
+normal create collection=c drop=true replicationFactor=1
+normal insert collection=c size=20G documentSize=500 parallelism=16 numberOfFields:2
+]

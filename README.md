@@ -44,10 +44,12 @@ Usage:
 
 Flags:
       --endpoints strings   Endpoint of server where data should be written. (default [http://localhost:8529])
-      --execute string      Filename of program to execute. (default "prog.feed")
+      --execute string      Filename of program to execute. (default "doit.feed")
   -h, --help                help for this command
       --jwt string          Verbose output
+      --metricsPort int     Metrics port (0 for no metrics) (default 8888)
       --password string     Password for database access.
+      --protocol string     Protocol (http1, http2, vst) (default "vst")
       --username string     User name for database access. (default "root")
   -v, --verbose             Verbose output
 ```

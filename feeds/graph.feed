@@ -1,5 +1,8 @@
 [
 graph create name=G vertexColl=V edgeColl=E numberOfShards:3 replicationFactor:2 drop=true
 graph insertVertices name=G type=cyclic graphSize=10 vertexColl=V size=1K parallelism=1
-graph insertEdges name=G type=cyclic graphSize=10 edgeColl=E size=1K parallelism=1
+graph insertEdges name=G type=cyclic graphSize=10 vertexColl=V edgeColl=E size=1K parallelism=1
+graph create name=GG vertexColl=VV edgeColl=EE numberOfShards:3 replicationFactor:2 drop=true
+graph insertVertices name=GG type=tree graphDepth=2 vertexColl=VV size=1K parallelism=1
+graph insertEdges name=GG type=tree graphDepth=2 vertexColl=VV edgeColl=EE size=1K parallelism=1
 ]

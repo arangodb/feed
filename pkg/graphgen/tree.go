@@ -57,8 +57,8 @@ func addEdge(directionType *string, prefix *string, edgePrefix *string,
 			makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalFromIndex,
 				globalToIndex, fromLabel, toLabel, e)
 			*edgeIndex++
-			makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalFromIndex,
-				globalToIndex, fromLabel, toLabel, e)
+			makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalToIndex,
+				globalFromIndex, toLabel, fromLabel, e)
 		}
 	}
 

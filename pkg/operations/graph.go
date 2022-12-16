@@ -21,6 +21,9 @@ type GraphProg struct {
 	EdgeCollName   string
 	GraphType      string
 	GraphSize      int64
+	GraphDepth     int64
+	GraphBranching int64
+	GraphDirection string
 	OutFormat      string
 }
 
@@ -49,6 +52,9 @@ func NewGraphProg(args []string) (feedlang.Program, error) {
 		EdgeCollName:   GetStringValue(m, "edgeColl", "E"),
 		GraphType:      GetStringValue(m, "type", "cyclic"),
 		GraphSize:      GetInt64Value(m, "graphSize", 2000),
+		GraphDepth:     GetInt64Value(m, "graphDepth", 10),
+		GraphBranching: GetInt64Value(m, "graphBranching", 2),
+		GraphDirection: GetStringValue(m, "graphDirection", "downwards"),
 		OutFormat:      GetStringValue(m, "outFormat", ""),
 	}
 
@@ -129,6 +135,16 @@ func (gp *GraphProg) Insert(what string) error {
 		gg, _ = (&graphgen.CycleGraphParameters{Length: uint64(gp.GraphSize),
 			GeneralParams: graphgen.GeneralParameters{
 				Prefix:             prefix,
+				EdgePrefix:         gp.VertexCollName + "/",
+				StartIndexVertices: 0,
+				StartIndexEdges:    0}}).MakeGraphGenerator(makeVertices, makeEdges)
+	case "tree":
+		gg, _ = (&graphgen.CompleteNaryTreeParameters{
+			BranchingDegree: uint64(gp.GraphBranching),
+			Depth:           uint64(gp.GraphDepth),
+			DirectionType:   gp.GraphDirection,
+			GeneralParams: graphgen.GeneralParameters{
+				Prefix:             "",
 				EdgePrefix:         gp.VertexCollName + "/",
 				StartIndexVertices: 0,
 				StartIndexEdges:    0}}).MakeGraphGenerator(makeVertices, makeEdges)

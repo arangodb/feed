@@ -56,7 +56,7 @@ var (
 	writeConflictStats WriteConflictStats
 	normalSubprograms  = map[string]struct{}{"create": {}, "insert": {},
 		"randomRead": {}, "randomUpdate": {}, "randomReplace": {},
-		"createIdx": {}, "queryOnIdx": {},
+		"createIdx": {}, "queryOnIdx": {}, "drop": {}, "truncate": {},
 	}
 )
 

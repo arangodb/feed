@@ -22,6 +22,7 @@ type GraphGeneratorData struct {
 
 type GeneralParameters struct {
 	Prefix             string
+	EdgePrefix         string
 	StartIndexVertices uint64
 	StartIndexEdges    uint64
 }
@@ -68,6 +69,7 @@ func PrintGraph(gg *GraphGenerator) {
 // produce edge out of indexes and put it into the channel
 func makeEdge(
 	prefix *string,
+	edgePrefix *string,
 	edgeIndex uint64,
 	edgeLabel *string,
 	globalFromIndex uint64,
@@ -82,8 +84,8 @@ func makeEdge(
 	edge.FromIndex = globalFromIndex
 	edge.ToIndex = globalToIndex
 	edge.Label = *prefix + *edgeLabel
-	edge.From = datagen.KeyFromIndex(globalFromIndex)
-	edge.To = datagen.KeyFromIndex(globalToIndex)
+	edge.From = *edgePrefix + datagen.KeyFromIndex(globalFromIndex)
+	edge.To = *edgePrefix + datagen.KeyFromIndex(globalToIndex)
 	edge.FromLabel = *prefix + *fromLabel
 	edge.ToLabel = *prefix + *toLabel
 	edgeChannel <- &edge

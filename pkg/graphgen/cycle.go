@@ -15,7 +15,7 @@ func vertexIndexToLabel(index uint64) string {
 	return strconv.FormatUint(index, 10)
 }
 
-func makeCycleEdge(prefix *string, edgeLabel *string, localFromIndex uint64,
+func makeCycleEdge(prefix *string, edgePrefix *string, edgeLabel *string, localFromIndex uint64,
 	localToIndex uint64, startIndexVertices uint64, startIndexEdges uint64,
 	e chan *datagen.Doc) {
 	edgeIndex := localFromIndex + startIndexEdges
@@ -23,7 +23,7 @@ func makeCycleEdge(prefix *string, edgeLabel *string, localFromIndex uint64,
 	toIndex := localToIndex + startIndexVertices
 	fromLabel := vertexIndexToLabel(fromIndex)
 	toLabel := vertexIndexToLabel(toIndex)
-	makeEdge(prefix, edgeIndex, edgeLabel, fromIndex, fromIndex,
+	makeEdge(prefix, edgePrefix, edgeIndex, edgeLabel, fromIndex, toIndex,
 		&fromLabel, &toLabel, e)
 }
 
@@ -58,13 +58,13 @@ func (c *CycleGraphParameters) MakeGraphGenerator(
 			var i uint64
 			for i = 0; uint64(i) < c.Length-1; i += 1 {
 				edgeLabel := strconv.FormatUint(i, 10)
-				makeCycleEdge(&c.GeneralParams.Prefix, &edgeLabel, i, i+1,
-					c.GeneralParams.StartIndexVertices,
+				makeCycleEdge(&c.GeneralParams.Prefix, &c.GeneralParams.EdgePrefix,
+					&edgeLabel, i, i+1, c.GeneralParams.StartIndexVertices,
 					c.GeneralParams.StartIndexEdges, E)
 			}
 			edgeLabel := strconv.FormatUint(c.Length-1, 10)
-			makeCycleEdge(&c.GeneralParams.Prefix, &edgeLabel, c.Length-1, 0,
-				c.GeneralParams.StartIndexVertices,
+			makeCycleEdge(&c.GeneralParams.Prefix, &c.GeneralParams.EdgePrefix,
+				&edgeLabel, c.Length-1, 0, c.GeneralParams.StartIndexVertices,
 				c.GeneralParams.StartIndexEdges, E)
 
 			close(E)

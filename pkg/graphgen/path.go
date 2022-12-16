@@ -47,13 +47,15 @@ func (p *PathParameters) MakeGraphGenerator(
 				fromLabel := strconv.FormatUint(i, 10)
 				toLabel := strconv.FormatUint(i+1, 10)
 
-				makeEdge(&p.GeneralParams.Prefix, edgeIndex, &edgeLabel,
-					globalFromIndex, globalToIndex, &fromLabel, &toLabel, E)
+				makeEdge(&p.GeneralParams.Prefix, &p.GeneralParams.EdgePrefix,
+					edgeIndex, &edgeLabel, globalFromIndex, globalToIndex, &fromLabel,
+					&toLabel, E)
 				edgeIndex++
 				if !p.Directed {
 					edgeLabel = strconv.FormatUint(edgeIndex, 10)
-					makeEdge(&p.GeneralParams.Prefix, edgeIndex, &edgeLabel,
-						globalToIndex, globalFromIndex, &toLabel, &fromLabel, E)
+					makeEdge(&p.GeneralParams.Prefix, &p.GeneralParams.EdgePrefix,
+						edgeIndex, &edgeLabel, globalToIndex, globalFromIndex, &toLabel,
+						&fromLabel, E)
 					edgeIndex++
 				}
 			}

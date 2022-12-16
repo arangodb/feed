@@ -98,8 +98,9 @@ func (lp *LexicographicalProductParameters) MakeGraphGenerator(
 							(vRight.index - lp.GeneralParams.StartIndexVertices - p1.NumberVertices()) + lp.GeneralParams.StartIndexVertices
 						newToLabel := fmt.Sprintf("(%s,%s)", e.ToLabel, vRight.label)
 						edgeLabel := strconv.FormatUint(countEdges, 10)
-						makeEdge(&lp.GeneralParams.Prefix, countEdges, &edgeLabel,
-							newFromIndex, newToIndex, &newFromLabel, &newToLabel, E)
+						makeEdge(&lp.GeneralParams.Prefix, &lp.GeneralParams.EdgePrefix,
+							countEdges, &edgeLabel, newFromIndex, newToIndex,
+							&newFromLabel, &newToLabel, E)
 						countEdges++
 					}
 				}
@@ -113,8 +114,9 @@ func (lp *LexicographicalProductParameters) MakeGraphGenerator(
 					newToIndex := v.index + eLabels.toIndex
 					newToLabel := fmt.Sprintf("(%s,%s)", v.label, eLabels.toLabel)
 					edgeLabel := strconv.FormatUint(countEdges, 10)
-					makeEdge(&lp.GeneralParams.Prefix, countEdges, &edgeLabel,
-						newFromIndex, newToIndex, &newFromLabel, &newToLabel, E)
+					makeEdge(&lp.GeneralParams.Prefix, &lp.GeneralParams.EdgePrefix,
+						countEdges, &edgeLabel, newFromIndex, newToIndex, &newFromLabel,
+						&newToLabel, E)
 					countEdges++
 				}
 			}

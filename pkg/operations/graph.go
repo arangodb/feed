@@ -115,10 +115,23 @@ func (gp *GraphProg) Insert(what string) error {
 
 	var gg graphgen.GraphGenerator
 
+	makeVertices := what == "vertices"
+	makeEdges := what == "edges"
+	var prefix string
+	if makeVertices {
+		prefix = gp.VertexCollName + "/"
+	} else {
+		prefix = gp.EdgeCollName + "/"
+	}
+
 	switch gp.GraphType {
 	case "cyclic":
-		gg, _ = (&graphgen.CycleGraphParameters{uint64(gp.GraphSize),
-			graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
+		gg, _ = (&graphgen.CycleGraphParameters{Length: uint64(gp.GraphSize),
+			GeneralParams: graphgen.GeneralParameters{
+				Prefix:             prefix,
+				EdgePrefix:         gp.VertexCollName + "/",
+				StartIndexVertices: 0,
+				StartIndexEdges:    0}}).MakeGraphGenerator(makeVertices, makeEdges)
 	default:
 		return fmt.Errorf("Unknown graph type: %s", gp.GraphType)
 	}

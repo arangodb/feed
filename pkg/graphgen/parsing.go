@@ -75,6 +75,7 @@ func errorResult(err *error) parseJSONtoGraphResult {
 
 func parseJSONtoGraph(f map[string]any,
 	prefix string,
+	edgePrefix string,
 	numVertices uint64,
 	numEdges uint64) parseJSONtoGraphResult {
 
@@ -91,7 +92,7 @@ func parseJSONtoGraph(f map[string]any,
 			{
 				left := subtree.([]interface{})[0]
 				leftChild := left.(map[string]any)
-				leftResult := parseJSONtoGraph(leftChild, prefix+"a",
+				leftResult := parseJSONtoGraph(leftChild, prefix+"a", edgePrefix,
 					numVertices, numEdges)
 				if leftResult.err != nil {
 					err := errors.New(fmt.Sprintf("Could not construct graph from %v, error: %v",
@@ -101,7 +102,7 @@ func parseJSONtoGraph(f map[string]any,
 
 				right := subtree.([]interface{})[1]
 				rightChild := right.(map[string]any)
-				rightResult := parseJSONtoGraph(rightChild, prefix+"b",
+				rightResult := parseJSONtoGraph(rightChild, prefix+"b", edgePrefix,
 					numVertices+leftResult.numVertices, numEdges+leftResult.numEdges)
 				if rightResult.err != nil {
 					err := errors.New(fmt.Sprintf("Could not construct graph from %v, error: %v",
@@ -110,7 +111,7 @@ func parseJSONtoGraph(f map[string]any,
 				}
 
 				var u Generatable = &UnionParameters{*leftResult.gg,
-					*rightResult.gg, GeneralParameters{prefix, numVertices, numEdges}}
+					*rightResult.gg, GeneralParameters{prefix, edgePrefix, numVertices, numEdges}}
 				return parseJSONtoGraphResult{
 					&u,
 					numVertices + leftResult.numVertices + rightResult.numVertices,
@@ -121,7 +122,8 @@ func parseJSONtoGraph(f map[string]any,
 			{
 				left := subtree.([]interface{})[0]
 				leftChild := left.(map[string]any)
-				leftResult := parseJSONtoGraph(leftChild, prefix+"a", numVertices, numEdges)
+				leftResult := parseJSONtoGraph(leftChild, prefix+"a", edgePrefix,
+					numVertices, numEdges)
 				if leftResult.err != nil {
 					err :=
 						errors.New(fmt.Sprintf("Could not construct graph from %v, error: %v",
@@ -131,7 +133,7 @@ func parseJSONtoGraph(f map[string]any,
 
 				right := subtree.([]interface{})[1]
 				rightChild := right.(map[string]any)
-				rightResult := parseJSONtoGraph(rightChild, prefix+"b",
+				rightResult := parseJSONtoGraph(rightChild, prefix+"b", edgePrefix,
 					numVertices+leftResult.numVertices,
 					numEdges+leftResult.numEdges)
 				if rightResult.err != nil {
@@ -142,7 +144,7 @@ func parseJSONtoGraph(f map[string]any,
 				}
 				var lp Generatable = &LexicographicalProductParameters{
 					*leftResult.gg, *rightResult.gg,
-					GeneralParameters{prefix, numVertices, numEdges}}
+					GeneralParameters{prefix, edgePrefix, numVertices, numEdges}}
 				return parseJSONtoGraphResult{
 					&lp,
 					numVertices + leftResult.numVertices + rightResult.numVertices,
@@ -155,7 +157,7 @@ func parseJSONtoGraph(f map[string]any,
 				length := uint64(subtree.(map[string]interface{})["length"].(float64)) // unmarshalling can only give float, never int
 				directed := subtree.(map[string]interface{})["directed"].(bool)
 				var path Generatable = &PathParameters{length, directed,
-					GeneralParameters{prefix, numVertices, numEdges}}
+					GeneralParameters{prefix, edgePrefix, numVertices, numEdges}}
 				return parseJSONtoGraphResult{&path,
 					numVertices + length + 1, numEdges + length, nil}
 			}
@@ -174,7 +176,7 @@ func parseJSONtoGraph(f map[string]any,
 				}
 				var tree Generatable = &CompleteNaryTreeParameters{
 					branchingDegree, depth, directionType,
-					GeneralParameters{prefix, numVertices, numEdges}}
+					GeneralParameters{prefix, edgePrefix, numVertices, numEdges}}
 				numTreeVertices := tree.(*CompleteNaryTreeParameters).NumVertices()
 				return parseJSONtoGraphResult{&tree,
 					numVertices + numTreeVertices,
@@ -186,7 +188,7 @@ func parseJSONtoGraph(f map[string]any,
 			{
 				length := uint64(subtree.(map[string]interface{})["length"].(float64))
 				var cycle Generatable = &CycleGraphParameters{length,
-					GeneralParameters{prefix, numVertices, numEdges}}
+					GeneralParameters{prefix, edgePrefix, numVertices, numEdges}}
 				return parseJSONtoGraphResult{&cycle, numVertices + length, numEdges + length, nil}
 			}
 		default:
@@ -199,13 +201,13 @@ func parseJSONtoGraph(f map[string]any,
 	return errorResult(&err)
 }
 
-func JSON2Graph(jsonGraph []byte, makeVertices bool, makeEdges bool) (GraphGenerator, error) {
+func JSON2Graph(jsonGraph []byte, edgeColName string, makeVertices bool, makeEdges bool) (GraphGenerator, error) {
 	var f map[string]any
 	err := json.Unmarshal(jsonGraph, &f)
 	if err != nil {
 		log.Fatalf("Could not parse input graph: %v", jsonGraph)
 	}
-	result := parseJSONtoGraph(f, "", 0, 0)
+	result := parseJSONtoGraph(f, "", edgeColName+"/", 0, 0)
 	if result.err != nil {
 		log.Printf("Could not produce a graph generator from the given JSON, error: %v", err)
 	}

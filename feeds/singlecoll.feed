@@ -3,7 +3,7 @@ normal create database=xyz collection=c numberOfShards=3 replicationFactor=3 dro
 wait 15
 normal createIdx database=xyz collection=c numberFields=1 withGeo=false idxName=abc
 wait 15
-normal insert database=xyz collection=c size=100M documentSize=300 withGeo=true withWords=5 parallelism=10 numberFields=5
+normal insert database=xyz collection=c size=2G documentSize=300 withGeo=true withWords=5 parallelism=10 numberFields=5
 wait 15
 normal truncate database=xyz collection=c
 wait 15

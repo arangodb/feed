@@ -40,23 +40,24 @@ func popLabel(stackPtr *[]stackElem) stackElem {
 	return result
 }
 
-func addEdge(directionType *string, prefix *string, edgeIndex *uint64,
-	edgeLabel *string, globalFromIndex uint64, globalToIndex uint64,
-	fromLabel *string, toLabel *string, e chan *datagen.Doc) {
+func addEdge(directionType *string, prefix *string, edgePrefix *string,
+	edgeIndex *uint64, edgeLabel *string, globalFromIndex uint64,
+	globalToIndex uint64, fromLabel *string, toLabel *string,
+	e chan *datagen.Doc) {
 
 	switch *directionType {
 	case "downwards":
-		makeEdge(prefix, *edgeIndex, edgeLabel, globalFromIndex, globalToIndex,
+		makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalFromIndex, globalToIndex,
 			fromLabel, toLabel, e)
 	case "upwards":
-		makeEdge(prefix, *edgeIndex, edgeLabel, globalToIndex, globalFromIndex,
+		makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalToIndex, globalFromIndex,
 			toLabel, fromLabel, e)
 	case "bidirected":
 		{
-			makeEdge(prefix, *edgeIndex, edgeLabel, globalFromIndex,
+			makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalFromIndex,
 				globalToIndex, fromLabel, toLabel, e)
 			*edgeIndex++
-			makeEdge(prefix, *edgeIndex, edgeLabel, globalFromIndex,
+			makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalFromIndex,
 				globalToIndex, fromLabel, toLabel, e)
 		}
 	}
@@ -118,7 +119,8 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator(
 			if makeEdges {
 				fromLabel := "eps"
 				toLabel := labelToString(&stack)
-				addEdge(&t.DirectionType, &t.GeneralParams.Prefix, &edgeIndex,
+				addEdge(&t.DirectionType, &t.GeneralParams.Prefix,
+					&t.GeneralParams.EdgePrefix, &edgeIndex,
 					&labelStr, t.GeneralParams.StartIndexVertices, vertexIndex,
 					&fromLabel, &toLabel, E)
 			}
@@ -150,7 +152,8 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator(
 				}
 				if makeEdges {
 					toIndex := currentIndexElem
-					addEdge(&t.DirectionType, &t.GeneralParams.Prefix, &edgeIndex,
+					addEdge(&t.DirectionType, &t.GeneralParams.Prefix,
+						&t.GeneralParams.EdgePrefix, &edgeIndex,
 						&toLabel, fromIndex, toIndex, &fromLabel, &toLabel, E)
 				}
 				edgeIndex++

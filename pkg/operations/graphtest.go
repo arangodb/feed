@@ -30,8 +30,8 @@ func PrintGraph(gg graphgen.GraphGenerator) {
 type cycleGraphParameters graphgen.CycleGraphParameters
 
 func (cp *cycleGraphParameters) Execute() error {
-	cycleGenerator, err := (&graphgen.CycleGraphParameters{cp.Length,
-		graphgen.GeneralParameters{"", 0, 0}}).MakeGraphGenerator(true, true)
+	cycleGenerator, err := (&graphgen.CycleGraphParameters{Length: cp.Length,
+		GeneralParams: graphgen.GeneralParameters{Prefix: "", EdgePrefix: cp.GeneralParams.EdgePrefix, StartIndexVertices: 0, StartIndexEdges: 0}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		return err
 	}
@@ -43,10 +43,11 @@ type pathGraphParameters graphgen.PathParameters
 
 func (pp *pathGraphParameters) Execute() error {
 	path, err := (&graphgen.PathParameters{
-		pp.Length, pp.Directed, graphgen.GeneralParameters{
-			pp.GeneralParams.Prefix,
-			pp.GeneralParams.StartIndexVertices,
-			pp.GeneralParams.StartIndexEdges}}).MakeGraphGenerator(true, true)
+		Length: pp.Length, Directed: pp.Directed, GeneralParams: graphgen.GeneralParameters{
+			Prefix:             pp.GeneralParams.Prefix,
+			EdgePrefix:         pp.GeneralParams.EdgePrefix,
+			StartIndexVertices: pp.GeneralParams.StartIndexVertices,
+			StartIndexEdges:    pp.GeneralParams.StartIndexEdges}}).MakeGraphGenerator(true, true)
 	if err != nil {
 		return err
 	}

@@ -2,31 +2,11 @@ In this document we collect tasks which need doing in this project.
 Let's put in brackets after the description the name of a person who
 grabs the task and starts working on it.
 
- - Implement graph producers. (Roman)
  - Design graph traversal use cases. (Markus)
  - Implement graph producing job. (Max)
- - Implement random reads on a collection (with latency and throughput
-   measurements). (Julia)
- - Implement a replace job for `normal`. (Julia)
- - Implement an update job for `normal`. (Julia)
- - Design the interface to graph generators. (Max)
- - Implement random reads from an index (with latency and throughput
-   measurements). Julia
- - Implement bulk reads from an index (with latency and throughput
-   measurements). Julia
- - Implement a job which creates a bunch of indexes on the additional fields. (Julia)
 
- - Implement bulk reads on a collection (with latency and throughput
-   measurements). This is essentially an AQL read from the primary index.
-   (Julia)
-
- - Allow to distribute load across multiple coordinators (we already have
-   multiple endpoints). (Max) Done, but needs further testing.
-
- - Design read load use cases.
  - Implement a job which creates a search view on a collection.
  - Implement a random graph use case.
- - Implement a binary tree graph generator.
  - Implement smart graph versions of the above.
  - Implement a disjoint smart graph use case.
  - Switch payloads to different sizes.
@@ -41,4 +21,28 @@ Done:
    of say 16 is OK for now. (Max)
  - Implement framework for graph producers. (Max)
  - Improve argument processing. (Max)
+ - Implement graph producers. (Roman)
+ - Implement random reads on a collection (with latency and throughput
+ - Implement a replace job for `normal`. (Julia)
+ - Implement an update job for `normal`. (Julia)
+ - Design the interface to graph generators. (Max)
+   measurements). (Julia)
+ - Implement random reads from an index (with latency and throughput
+   measurements). Julia
+ - Implement bulk reads from an index (with latency and throughput
+   measurements). Julia
+ - Implement a job which creates a bunch of indexes on the additional fields. (Julia)
+ - Design read load use cases.
+ - Implement a binary tree graph generator.
+ - Allow to distribute load across multiple coordinators (we already have
+   multiple endpoints). (Max) Done, but needs further testing.
+ - Implement bulk reads on a collection (with latency and throughput
+   measurements). This is essentially an AQL read from the primary index.
+   (Julia)
+ - Drop collection job. (Max)
+ - Metrics. (Max)
+ - Truncate collection job. (Max)
+ - Drop index job. (Max)
+
+
 

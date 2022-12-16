@@ -56,7 +56,8 @@ var (
 	writeConflictStats WriteConflictStats
 	normalSubprograms  = map[string]struct{}{"create": {}, "insert": {},
 		"randomRead": {}, "randomUpdate": {}, "randomReplace": {},
-		"createIdx": {}, "queryOnIdx": {}, "drop": {}, "truncate": {},
+		"createIdx": {}, "dropIdx": {}, "queryOnIdx": {}, "drop": {},
+		"truncate": {},
 	}
 )
 
@@ -230,6 +231,19 @@ func (np *NormalProg) CreateIdx(cl driver.Client) error {
 	return nil
 }
 
+func (np *NormalProg) DropIdx(cl driver.Client) error {
+	config.OutputMutex.Lock()
+	fmt.Printf("\nnormal: Will perform index drop.\n\n")
+	config.OutputMutex.Unlock()
+
+	if err := dropIdx(np); err != nil {
+		return fmt.Errorf("can not create drop")
+	}
+	metrics.IndexesDropped.Inc()
+
+	return nil
+}
+
 func (np *NormalProg) RandomReplace(cl driver.Client) error {
 	config.OutputMutex.Lock()
 	fmt.Printf("\nnormal: Will perform random replaces.\n\n")
@@ -378,7 +392,7 @@ func runQueryOnIdxInParallel(np *NormalProg) error {
 func createIdx(np *NormalProg) error {
 	isJSON, err := ValidateOutFormat(np.OutFormat)
 	if err != nil {
-		return fmt.Errorf("\nrandomReplace: can not obtain output format, %v", err)
+		return fmt.Errorf("\nidxCreation: can not obtain output format, %v", err)
 	}
 	totaltimestart := time.Now()
 	haveError := false
@@ -472,6 +486,105 @@ func createIdx(np *NormalProg) error {
 		msg, err = PrettyPrintToJSON(msg)
 		if err != nil {
 			return fmt.Errorf("\nidxCreation: can not write statistics in JSON format, %v", err)
+		}
+		fmt.Printf(msg)
+	} else {
+		fmt.Printf("\nnormal: total time: %v,\n total idxs per second: %f \n\n", totaltimeend.Sub(totaltimestart), idxspersec)
+	}
+
+	if !haveError {
+		return nil
+	}
+	fmt.Printf("Error in idxCreation %v \n", err)
+	return fmt.Errorf("Error in idxCreation.")
+}
+
+func dropIdx(np *NormalProg) error {
+	isJSON, err := ValidateOutFormat(np.OutFormat)
+	if err != nil {
+		return fmt.Errorf("\nidxDrop: can not obtain output format, %v", err)
+	}
+	totaltimestart := time.Now()
+	haveError := false
+	if config.Verbose {
+		config.OutputMutex.Lock()
+		fmt.Printf("normal: Starting idx drop...\n")
+		config.OutputMutex.Unlock()
+	}
+	// Let's use our own private client and connection here:
+	cl, err := config.MakeClient()
+	if err != nil {
+		return fmt.Errorf("idxDrop: Can not make client: %v", err)
+	}
+	db, err := cl.Database(context.Background(), np.Database)
+	if err != nil {
+		return fmt.Errorf("idxDrop: Can not get database: %s", np.Database)
+	}
+
+	coll, err := db.Collection(nil, np.Collection)
+	if err != nil {
+		config.OutputMutex.Lock()
+		fmt.Printf("idxDrop: could not open `%s` collection: %v\n", np.Collection, err)
+		config.OutputMutex.Unlock()
+		return err
+	}
+
+	var idxName string
+	if strings.HasPrefix(np.IdxName, "\"") {
+		np.IdxName = np.IdxName[1 : len(np.IdxName)-1]
+	}
+	if len(np.IdxName) > 0 {
+		idxName = np.IdxName
+	} else {
+		config.OutputMutex.Lock()
+		fmt.Printf("idxDrop: no index name given to drop in collection %s: %v\n",
+			np.Collection, err)
+		config.OutputMutex.Unlock()
+		return fmt.Errorf("idxDrop: no index name given")
+	}
+
+	ctx := context.Background()
+	indexes, err := coll.Indexes(ctx)
+	if err != nil {
+		fmt.Printf("idxDrop: cannot list indexes of collection %s: %v\n", np.Collection, err)
+		haveError = true
+	} else {
+		found := false
+		for _, ind := range indexes {
+			fmt.Printf("Index: %v\n, Name: %s\n", ind, ind.UserName())
+			if ind.UserName() == idxName {
+				found = true
+				err = ind.Remove(ctx)
+				if err != nil {
+					haveError = true
+				}
+				break
+			}
+		}
+		if !found {
+			haveError = true
+			fmt.Printf("idxDrop: Did not find index with name %s in collection %s in database %s",
+				idxName, np.Collection, np.Database)
+			err = fmt.Errorf("Did not find index with name %s in collection %s in database %s",
+				idxName, np.Collection, np.Database)
+		}
+	}
+
+	if config.Verbose && !haveError {
+		config.OutputMutex.Lock()
+		fmt.Printf("normal: idxDrop done\n")
+		config.OutputMutex.Unlock()
+	}
+
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+	idxspersec := 1 / (float64(totaltime) / float64(time.Second))
+	if isJSON {
+		// JSON format
+		msg := fmt.Sprintf(`{"normal": {"totalTime": %v, "totalIdxsPerSecond": %f, "hadErrors": %v}}`, totaltimeend.Sub(totaltimestart), idxspersec, haveError)
+		msg, err = PrettyPrintToJSON(msg)
+		if err != nil {
+			return fmt.Errorf("\nidxDrop: can not write statistics in JSON format, %v", err)
 		}
 		fmt.Printf(msg)
 	} else {
@@ -971,6 +1084,8 @@ func (np *NormalProg) Execute() error {
 		return np.RandomReplace(cl)
 	case "createIdx":
 		return np.CreateIdx(cl)
+	case "dropIdx":
+		return np.DropIdx(cl)
 	case "queryOnIdx":
 		return np.RunQueryOnIdx(cl)
 	}

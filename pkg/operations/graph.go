@@ -139,7 +139,7 @@ func (gp *GraphProg) Insert(what string) error {
 				StartIndexVertices: 0,
 				StartIndexEdges:    0}}).MakeGraphGenerator(makeVertices, makeEdges)
 	case "tree":
-		gg, _ = (&graphgen.CompleteNaryTreeParameters{
+		gg, _ = (&graphgen.Tree{
 			BranchingDegree: uint64(gp.GraphBranching),
 			Depth:           uint64(gp.GraphDepth),
 			DirectionType:   gp.GraphDirection,

@@ -3,11 +3,108 @@ package graphgen
 import (
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 
 	"github.com/arangodb/feed/pkg/datagen"
 )
+
+const (
+	DirectionDown string = "downwards"
+	DirectionUp   string = "upwards"
+	DirectionBi   string = "bidirected"
+)
+
+func Pow(a uint64, b uint64) uint64 {
+	var x uint64 = 1
+	var aa uint64 = a
+	for b != 0 {
+		if b&1 != 0 {
+			x *= aa
+		}
+		b = b >> 1
+		aa = aa * aa
+	}
+	return x
+}
+
+type Tree struct {
+	BranchingDegree uint64
+	Depth           uint64
+	DirectionType   string
+	GeneralParams   GeneralParameters
+}
+
+func (t *Tree) NumVertices() uint64 {
+	return Pow(t.BranchingDegree, t.Depth+1) / (t.BranchingDegree - 1)
+}
+
+func labelFromInt(i uint64, b uint64) string {
+	if i == 0 {
+		return "eps"
+	}
+	return labelFromInt((i-1)/b, b) + "-" + strconv.FormatInt(int64((i-1)%b), 10)
+}
+
+func (t *Tree) MakeGraphGenerator(
+	makeVertices bool, makeEdges bool) (GraphGenerator, error) {
+
+	if t.BranchingDegree < 2 {
+		return nil, errors.New(fmt.Sprintf("Wrong argument to tree MakeGraphGenerator: %d; BranchingDegree should be at least 2.",
+			t.BranchingDegree))
+	}
+	if t.Depth == 0 {
+		return nil, errors.New("Wrong argument to tree MakeGraphGenerator: Depth cannot be 0.")
+	}
+
+	numVertices := t.NumVertices()
+	numEdges := numVertices - 1
+	if t.DirectionType == "bidirected" {
+		numEdges = numEdges * 2
+	}
+
+	V := make(chan *datagen.Doc, BatchSize())
+	E := make(chan *datagen.Doc, BatchSize())
+
+	if makeVertices {
+		go func() {
+			var vertexIndex uint64 = t.GeneralParams.StartIndexVertices
+			var i uint64
+			for i = 0; i < numVertices; i += 1 {
+				label := labelFromInt(i, t.BranchingDegree)
+				makeVertex(&t.GeneralParams.Prefix, vertexIndex, &label, V)
+				vertexIndex += 1
+			}
+			close(V)
+		}()
+	}
+
+	b := t.BranchingDegree
+	if makeEdges {
+		go func() {
+			var vertexIndex uint64 = t.GeneralParams.StartIndexVertices
+			var edgeIndex uint64 = t.GeneralParams.StartIndexEdges
+			var i uint64
+			labelEdge := "Karl"
+			for i = 0; i < numVertices-Pow(b, t.Depth); i += 1 {
+				labelFrom := labelFromInt(i, b)
+				var j uint64
+				for j = 1; j <= b; j += 1 {
+					labelTo := labelFromInt(i*b+j, b)
+					addEdge(&t.DirectionType, &t.GeneralParams.Prefix,
+						&t.GeneralParams.EdgePrefix, &edgeIndex, &labelEdge,
+						vertexIndex, vertexIndex*b+j, &labelFrom, &labelTo, E)
+					edgeIndex += 1
+				}
+				vertexIndex += 1
+			}
+			close(E)
+		}()
+	}
+
+	return &GraphGeneratorData{V: V, E: E,
+		numberVertices: numVertices,
+		numberEdges:    numEdges}, nil
+}
 
 type CompleteNaryTreeParameters struct {
 	BranchingDegree uint64
@@ -17,9 +114,7 @@ type CompleteNaryTreeParameters struct {
 }
 
 func (t *CompleteNaryTreeParameters) NumVertices() uint64 {
-	// todo: implement Pow for uint
-	return uint64((math.Pow(float64(t.BranchingDegree),
-		float64(t.Depth+1)) - float64(1)) / float64(t.BranchingDegree-1))
+	return Pow(t.BranchingDegree, t.Depth+1) / (t.BranchingDegree - 1)
 }
 
 func labelToString(stack *[]stackElem) string {
@@ -46,13 +141,13 @@ func addEdge(directionType *string, prefix *string, edgePrefix *string,
 	e chan *datagen.Doc) {
 
 	switch *directionType {
-	case "downwards":
+	case DirectionDown:
 		makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalFromIndex, globalToIndex,
 			fromLabel, toLabel, e)
-	case "upwards":
+	case DirectionUp:
 		makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalToIndex, globalFromIndex,
 			toLabel, fromLabel, e)
-	case "bidirected":
+	case DirectionBi:
 		{
 			makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalFromIndex,
 				globalToIndex, fromLabel, toLabel, e)

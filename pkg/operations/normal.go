@@ -353,10 +353,13 @@ func runQueryOnIdxInParallel(np *NormalProg) error {
 		times := make([]time.Duration, 0, np.LoadPerThread)
 		cyclestart := time.Now()
 
+		// It is crucial that every go routine has its own random source, otherwise
+		// we create a lot of contention.
+		source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
+
 		for i := int64(1); i <= np.LoadPerThread; i++ {
 			start := time.Now()
-			randLength := rand.Intn(100)
-			source := rand.New(rand.NewSource(int64(np.LoadPerThread) + rand.Int63()))
+			randLength := source.Intn(100)
 			randWord := datagen.MakeRandomStringWithSpaces(randLength, source)
 
 			queryStr := "FOR doc IN " + np.Collection + " SORT doc." + idxAttr + " DESC FILTER doc." + idxAttr + " >= \"" + randWord + "\" LIMIT " + strconv.FormatInt(np.QueryLimit, 10) + " RETURN doc"
@@ -661,15 +664,18 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		cyclestart := time.Now()
 
 		writeConflicts := int64(0)
+
+		// It is crucial that every go routine has its own random source, otherwise
+		// we create a lot of contention.
+		source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
+
 		for i := int64(1); i <= np.LoadPerThread; i++ {
 			keys := make([]string, 0, batchSizeLimit)
 			docs := make([]datagen.Doc, 0, batchSizeLimit)
 
-			source := rand.New(rand.NewSource(int64(np.LoadPerThread) + rand.Int63()))
-
 			for j := int64(1); j <= batchSizeLimit; j++ {
 				var doc datagen.Doc
-				randIntId = rand.Int63n(colSize) + 1
+				randIntId = source.Int63n(colSize)
 				doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
 				keys = append(keys, doc.Key)
 
@@ -787,15 +793,18 @@ func updateRandomlyInParallel(np *NormalProg) error {
 		times := make([]time.Duration, 0, np.LoadPerThread)
 		cyclestart := time.Now()
 		writeConflicts := int64(0)
+
+		// It is crucial that every go routine has its own random source, otherwise
+		// we create a lot of contention.
+		source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
+
 		for i := int64(1); i <= np.LoadPerThread; i++ {
 			keys := make([]string, 0, batchSizeLimit)
 			docs := make([]datagen.Doc, 0, batchSizeLimit)
 
-			source := rand.New(rand.NewSource(int64(np.LoadPerThread) + rand.Int63()))
-
 			for j := int64(1); j <= batchSizeLimit; j++ {
 				var doc datagen.Doc
-				randIntId = rand.Int63n(colSize) + 1
+				randIntId = source.Int63n(colSize)
 				doc.ShaKey(randIntId, int(np.DocConfig.KeySize))
 				keys = append(keys, doc.Key)
 				doc.FillData(&np.DocConfig, source)
@@ -905,10 +914,14 @@ func readRandomlyInParallel(np *NormalProg) error {
 			return err
 		}
 
+		// It is crucial that every go routine has its own random source, otherwise
+		// we create a lot of contention.
+		source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
+
 		times := make([]time.Duration, 0, np.LoadPerThread)
 		cyclestart := time.Now()
 		for i := int64(1); i <= np.LoadPerThread; i++ {
-			randIntId := rand.Int63n(colSize) + 1
+			randIntId := source.Int63n(colSize)
 
 			var doc datagen.Doc
 			doc.ShaKey(randIntId, int(np.DocConfig.KeySize))

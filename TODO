@@ -1,10 +1,9 @@
- - Debug Tree generation code, definitely wrong.
+ - Finish teratest.feed and try it out on a single server.
+ - Baseline timings for teratest.feed.
+ - Deliver teratest.feed to Speedb.
+
  - Fix testing code for larger graphs (blocked channels).
  - Revamp JSON output to make it more readable.
  - Add histograms with execution times to metrics.
  - Finish Grafana dashboards, upload to repository.
- - Sort out random generation on RandomReads (don't use global random generator).
  - Debug error in teratest.feed (random read reading unknown key)
- - Finish teratest.feed and try it out on a single server.
- - Baseline timings for teratest.feed.
- - Deliver teratest.feed to Speedb.

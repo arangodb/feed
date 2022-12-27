@@ -5,22 +5,22 @@ normal createIdx database=xyz collection=c withGeo=false numberFields=1 idxName=
 normal createIdx database=xyz collection=c withGeo=false numberFields=2 idxName=two
 
 # Insert a terabyte of data:
-normal insert database=xyz collection=c size=100M documentSize=300 withGeo=false withWords=0 parallelism=64 numberFields=5
+normal insert database=xyz collection=c size=1T documentSize=300 withGeo=false withWords=0 parallelism=64 numberFields=5
 
 # Try random reads:
-normal randomRead database=xyz collection=c parallelism=64 loadPerThread=5000
+normal randomRead database=xyz collection=c parallelism=64 loadPerThread=300000
 # Try bulk reads:
-normal queryOnIdx database=xyz collection=c queryLimit=1000 parallelism=64 loadPerThread=20 idxName=primary
+normal queryOnIdx database=xyz collection=c queryLimit=1000 parallelism=64 loadPerThread=1200 idxName=primary
 # Try random index reads:
-normal queryOnIdx database=xyz collection=c queryLimit=1 parallelism=64 loadPerThread=3000 idxName=one
+normal queryOnIdx database=xyz collection=c queryLimit=1 parallelism=64 loadPerThread=180000 idxName=one
 # Try index reads:
-normal queryOnIdx database=xyz collection=c queryLimit=1000 parallelism=64 loadPerThread=10 idxName=two
+normal queryOnIdx database=xyz collection=c queryLimit=1000 parallelism=64 loadPerThread=600 idxName=two
 
 # Replace all data:
-normal randomReplace database=xyz collection=c parallelism=64 loadPerThread=20 batchSize=1000
+normal randomReplace database=xyz collection=c parallelism=64 loadPerThread=1200 batchSize=1000
 
 # Update all data:
-normal randomUpdate database=xyz collection=c parallelism=64 loadPerThread=20 batchSize=1000
+normal randomUpdate database=xyz collection=c parallelism=64 loadPerThread=1200 batchSize=1000
 
 # Drop stuff again:
 normal drop database=xyz collection=c
@@ -36,14 +36,20 @@ normal createIdx database=xyz collection=e withGeo=false numberFields=2 idxName=
 
 # Insert data concurrently:
 {
-normal insert database=xyz collection=d size=200M documentSize=300 withGeo=false withWords=0 parallelism=64 numberFields=5
-normal insert database=xyz collection=e size=200M documentSize=300 withGeo=false withWords=0 parallelism=64 numberFields=5
+normal insert database=xyz collection=d size=500G documentSize=300 withGeo=false withWords=0 parallelism=64 numberFields=5
+normal insert database=xyz collection=e size=500G documentSize=300 withGeo=false withWords=0 parallelism=64 numberFields=5
 }
 
 # Replace with concurrent random reads:
 {
-normal randomReplace database=xyz collection=d parallelism=64 batchSize=1000 loadPerThread=20
-normal randomRead database=xyz collection=e parallelism=64 loadPerThread=100
+normal randomReplace database=xyz collection=d parallelism=64 batchSize=1000 loadPerThread=1200
+normal randomRead database=xyz collection=e parallelism=64 loadPerThread=6000
+}
+
+# Update with concurrent random reads:
+{
+normal randomUpdate database=xyz collection=d parallelism=64 batchSize=1000 loadPerThread=1200
+normal randomRead database=xyz collection=e parallelism=64 loadPerThread=6000
 }
 
 # And drop again:

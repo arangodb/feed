@@ -1,0 +1,92 @@
+These are the results for a teratest run on standard 3.10.2 enterprise
+with the following startup command line:
+
+/data/arangodb/usr/sbin/arangod \
+    --server.endpoint tcp://0.0.0.0:8529 \
+    --server.authentication false \
+    --rocksdb.enable-statistics true \
+    --rocksdb.debug-logging true \
+    --log.level rocksdb=debug \
+    --log.output file:///data/arangod.log \
+    --rocksdb.use-file-logging true \
+    --database.directory /data/datadir \
+    -c none \
+    --javascript.startup-directory /data/arangodb/usr/share/arangodb3/js \
+    --javascript.app-path /tmp/apps 2>&1 > /dev/null &
+
+
+Insert:
+
+	normal: Total number of documents written: 3665038000,
+	  total batches per second: 155.863114,
+	  total docs per second: 155863.114049, 
+	 with errors false, 
+
+Random reads:
+
+	normal: Total number of reads: 19200000,
+	 total reads per second: 165920.681159, hadErrors: false
+
+Bulk reads (AQL query, primary index):
+
+	normal: Total number of query on index executions: 76800,
+	 total queries per second: 428.286423, 
+	 hadErrors: false
+
+Random index reads (AQL query, other index, LIMIT 1):
+
+	normal: Total number of query on index executions: 11520000,
+	 total queries per second: 184912.437396, 
+	 hadErrors: false
+
+Bulk reads (AQL query, other index, LIMIT 1000):
+
+	normal: Total number of query on index executions: 38400,
+	 total queries per second: 251.926769, 
+	 hadErrors: false
+
+Random replace:
+
+	normal: Total number of replaces: 76800000,
+	 total replaces per second: 103366.555331,
+	 total write conflicts: 1308, 
+	 had errors: false 
+
+Random update:
+
+	normal: Total number of updates: 76800000,
+	 total updates per second: 86912.908809,
+	 total write conflicts: 0,
+	 hadErrors: false 
+
+Parallel insert of two collections, total 1T:
+
+	normal: Total number of documents written: 1789569000,
+	  total batches per second: 78.935533,
+	  total docs per second: 78935.533308, 
+	 with errors false, 
+
+	normal: Total number of documents written: 1789569000,
+	  total batches per second: 78.919231,
+	  total docs per second: 78919.231298, 
+	 with errors false, 
+
+Parallel replace and random read:
+
+	normal: Total number of replaces: 76800000,
+	 total replaces per second: 114319.049214,
+	 total write conflicts: 5136, 
+	 had errors: false 
+
+	normal: Total number of reads: 384000,
+	 total reads per second: 69911.136822, hadErrors: false
+
+Parallel update and random read:
+
+	normal: Total number of updates: 76800000,
+	 total updates per second: 93677.773447,
+	 total write conflicts: 0,
+	 hadErrors: false 
+
+	normal: Total number of reads: 384000,
+	 total reads per second: 59008.052020, hadErrors: false

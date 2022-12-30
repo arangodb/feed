@@ -1,0 +1,108 @@
+These are the results for a teratest run on speedb build:
+  date: Monday 26 December 2022
+  sha: 6a3425c75a2de540c946ec4c40a9d01a2dd1e0368d07e030fd9992c2982def18
+  build-date: 2022-12-26 12:08:02
+  build-repository: heads/3.10-0-gce7ed2f3b43-dirty
+  enterprise-build-repository: heads/3.10-0-g6ba94dac
+
+with the following startup command line:
+
+./build/bin/arangod \
+    --server.endpoint tcp://0.0.0.0:8529 \
+    --server.authentication false \
+    --rocksdb.enable-statistics true \
+    --rocksdb.debug-logging true \
+    --rocksdb.throttle false \
+    --log.level rocksdb=debug \
+    --log.output file:///data/arangod.log \
+    --rocksdb.use-file-logging true \
+    --database.directory /data/datadir \
+    -c etc/relative/arangod.conf \
+    --rocksdb.max-total-wal-size 1000000000 \
+    --rocksdb.pending-compactions-slowdown-trigger 4294967296 \
+    --rocksdb.pending-compactions-stop-trigger     107374182400 \
+    --rocksdb.cache-index-and-filter-blocks false \
+    --rocksdb.max-background-jobs 24 \
+    --rocksdb.enable-statistics true \
+    --rocksdb.debug-logging true \
+    --rocksdb.max-subcompactions 8 \
+    --rocksdb.write-buffer-size 268435456 \
+    --rocksdb.max-write-buffer-number 4 \
+    2>&1 > /dev/null &
+
+Insert:
+
+	normal: Total number of documents written: 3665038000,
+	  total batches per second: 281.327435,
+	  total docs per second: 281327.434698, 
+	 with errors false, 
+
+Random reads:
+
+	normal: Total number of reads: 19200000,
+	 total reads per second: 163221.267219, hadErrors: false
+
+Bulk reads (AQL query, primary index):
+
+	normal: Total number of query on index executions: 76800,
+	 total queries per second: 425.474066, 
+	 hadErrors: false
+
+Random index reads (AQL query, other index, LIMIT 1):
+
+	normal: Total number of query on index executions: 11520000,
+	 total queries per second: 137053.541112, 
+	 hadErrors: false
+
+Bulk reads (AQL query, other index, LIMIT 1000):
+
+	normal: Total number of query on index executions: 38400,
+	 total queries per second: 260.373007, 
+	 hadErrors: false
+
+Random replace:
+
+	normal: Total number of replaces: 76800000,
+	 total replaces per second: 131779.347528,
+	 total write conflicts: 1253, 
+	 had errors: false 
+
+Random update:
+
+	normal: Total number of updates: 76800000,
+	 total updates per second: 125165.158552,
+	 total write conflicts: 0,
+	 hadErrors: false 
+
+Parallel insert of two collections, total 1T:
+
+	normal: Total number of documents written: 1789569000,
+	  total batches per second: 96.302410,
+	  total docs per second: 96302.409897, 
+	 with errors false, 
+
+	normal: Total number of documents written: 1789569000,
+	  total batches per second: 95.959914,
+	  total docs per second: 95959.913501, 
+	 with errors false, 
+
+Parallel replace and random read:
+
+	normal: Total number of reads: 384000,
+	 total reads per second: 106847.739007, hadErrors: false
+
+	normal: Total number of replaces: 76800000,
+	 total replaces per second: 46085.875161,
+	 total write conflicts: 5019, 
+	 had errors: false 
+
+Parallel update and random read:
+
+
+	normal: Total number of reads: 384000,
+	 total reads per second: 98705.860167, hadErrors: false
+
+	normal: Total number of updates: 76800000,
+	 total updates per second: 45783.230174,
+	 total write conflicts: 0,
+	 hadErrors: false 

@@ -174,7 +174,7 @@ func WriteStatisticsForTimes(times []time.Duration, msg string, isJSON bool) err
 		config.OutputMutex.Unlock()
 	} else {
 		config.OutputMutex.Lock()
-		fmt.Printf("%s:\n  %s (median),\n  %s (90%%ile),\n  %s (99%%ilie),\n  %s (average)\n",
+		fmt.Printf("%s:\n  %s (median),\n  %s (90%%ile),\n  %s (99%%ile),\n  %s (average)\n",
 			msg,
 			median,
 			percentile90,

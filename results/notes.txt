@@ -1,0 +1,57 @@
+Start at 8:49:
+  
+    --rocksdb.max-total-wal-size 1000000000 \
+    --rocksdb.pending-compactions-slowdown-trigger 4294967296 \
+    --rocksdb.pending-compactions-stop-trigger     107374182400 \
+    --rocksdb.cache-index-and-filter-blocks false \
+
+but not:
+
+    --rocksdb.write-buffer-size 268435456 \
+    --rocksdb.max-write-buffer-number 4 \
+    --rocksdb.max-background-jobs 24 \
+    --rocksdb.max-subcompactions 8 \
+
+Start at 10:06:
+
+    --rocksdb.max-total-wal-size 1000000000 \
+    --rocksdb.pending-compactions-slowdown-trigger 4294967296 \
+    --rocksdb.pending-compactions-stop-trigger     107374182400 \
+    --rocksdb.write-buffer-size 268435456 \
+    --rocksdb.max-write-buffer-number 4 \
+    --rocksdb.cache-index-and-filter-blocks false \
+
+but not:
+
+    --rocksdb.max-background-jobs 24 \
+    --rocksdb.max-subcompactions 8 \
+
+Start at 11:59:
+
+    --rocksdb.max-total-wal-size 1000000000 \
+    --rocksdb.pending-compactions-slowdown-trigger 4294967296 \
+    --rocksdb.pending-compactions-stop-trigger     107374182400 \
+    --rocksdb.write-buffer-size 268435456 \
+    --rocksdb.max-write-buffer-number 4 \
+    --rocksdb.cache-index-and-filter-blocks false \
+    --rocksdb.max-subcompactions 8 \
+    --rocksdb.block-cache-shard-bits 8 \
+
+but not:
+
+    --rocksdb.max-background-jobs 24 \
+
+Start at 14:24:
+
+    --rocksdb.max-total-wal-size 1000000000 \
+    --rocksdb.pending-compactions-slowdown-trigger 4294967296 \
+    --rocksdb.pending-compactions-stop-trigger     107374182400 \
+    --rocksdb.write-buffer-size 268435456 \
+    --rocksdb.max-write-buffer-number 4 \
+    --rocksdb.cache-index-and-filter-blocks false \
+    --rocksdb.max-subcompactions 8 \
+    --rocksdb.block-cache-shard-bits 8 \
+    --rocksdb.max-background-jobs 24 \
+    --rocksdb.num-uncompressed-levels 10 \
+
+

@@ -2,16 +2,16 @@ All results in docs/second, more is better.
 All operations with 64 client threads, in the parallel loads, both
 operations had 64 client threads. All localhost traffic with protocol VST.
 
-Test                    ArangoDB 3.10.2                 SpeedB
-Bulk insert             155863          100%            281327          180%
-Random reads            165920          100%            163221           98%
-Bulk reads              428             100%            425              99%
-Random index reads      184912          100%            137053           74%
-Bulk index reads        251             100%            260             104%
-Random replace (batch)  103366          100%            131779          127%
-Random update (batch)   86912           100%            125165          144%
-Parallel insert 2 colls 78935+78919     100%            96302+95959     122%
-Parallel replace &      114319          100%            46085            40%
-    random read         69911           100%            106847          153%
-Parallel update &       93677           100%            45783            49%
-    random read         59008           100%            98705           167%
+Test                    ArangoDB 3.10.2                 SpeedB                  ArangoDB 3.10.2 other options   SpeedB/3.10.2(better options)   ArangoDB 3.10.2 other options, no compression
+Bulk insert             155863          100%            281327          180%    217964          139%            129%                            248758          160%
+Random reads            165920          100%            163221           98%    173023          104%             94%                            162061           98%
+Bulk reads              428             100%            425              99%    422              99%            101%                            423              99%
+Random index reads      184912          100%            137053           74%    204800          111%             67%                            207472          112%
+Bulk index reads        251             100%            260             104%    259             103%            100%                            266             106%
+Random replace (batch)  103366          100%            131779          127%    114192          110%            115%                            105501          102%
+Random update (batch)   86912           100%            125165          144%    105158          102%            119%                            95385           107%
+Parallel insert 2 colls 78935+78919     100%            96302+95959     122%    116582+116459   148%             83%                            133206+133166   169%
+Parallel replace &      114319          100%            46085            40%    128369          112%             36%                            118660          104%
+    random read         69911           100%            106847          153%    72912           104%            146%                            53292            76%
+Parallel update &       93677           100%            45783            49%    84914            91%             54%                            111050          118%
+    random read         59008           100%            98705           167%    119160          202%             83%                            53613            91%

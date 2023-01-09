@@ -1,6 +1,7 @@
  - Better human readable output of results. 
  - Revamp JSON output to make it more readable/usable. Probably dump to file.
  - Finish Grafana dashboards, upload to repository.
+ - Finish and polish documentation.
 
  - Fix testing code for larger graphs (blocked channels).
  - Add histograms with execution times to metrics.

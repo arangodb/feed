@@ -19,6 +19,7 @@ var (
 	ProgName    string
 	OutputMutex sync.Mutex
 	Protocol    string
+	JSONOutput  string
 )
 
 // MakeClient produces a client with connection to the database.

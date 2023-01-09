@@ -45,6 +45,27 @@ type NormalProg struct {
 
 	// Parameter for statistics (possibly other outputs) format
 	OutFormat string
+
+	// Runtime meta data:
+	feedlang.ProgMeta
+}
+
+func (n *NormalProg) Lines() (int, int) {
+	return n.StartLine, n.EndLine
+}
+
+func (n *NormalProg) StatsOutput() []string {
+	return []string{
+		fmt.Sprintf("normal: Have run for %v (lines %d..%d of script)\n",
+			n.EndTime.Sub(n.StartTime), n.StartLine, n.EndLine),
+		fmt.Sprintf("        Start time: %v\n", n.StartTime),
+		fmt.Sprintf("        End time  : %v\n", n.EndTime),
+	}
+}
+
+func (n *NormalProg) StatsJSON() interface{} {
+	n.Type = "normal (" + n.SubCommand + ")"
+	return n
 }
 
 type WriteConflictStats struct {
@@ -100,7 +121,7 @@ func ValidateOutFormat(outFormat string) (bool, error) {
 	}
 }
 
-func NewNormalProg(args []string) (feedlang.Program, error) {
+func NewNormalProg(args []string, line int) (feedlang.Program, error) {
 	// This function parses the command line args and fills the values in
 	// the struct.
 	// Defaults:
@@ -109,6 +130,8 @@ func NewNormalProg(args []string) (feedlang.Program, error) {
 	if _, hasKey := normalSubprograms[np.SubCommand]; !hasKey {
 		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
+	np.StartLine = line
+	np.EndLine = line
 	return np, nil
 }
 
@@ -1089,6 +1112,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 // subcommand is chosen in the arguments.
 func (np *NormalProg) Execute() error {
 	// This actually executes the NormalProg:
+	np.StartTime = time.Now()
 	var cl driver.Client
 	var err error
 	if config.Jwt != "" {
@@ -1097,31 +1121,37 @@ func (np *NormalProg) Execute() error {
 		cl, err = client.NewClient(config.Endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
+		np.EndTime = time.Now()
+		np.RunTime = np.EndTime.Sub(np.StartTime)
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
 	}
 	switch np.SubCommand {
 	case "create":
-		return np.Create(cl)
+		err = np.Create(cl)
 	case "drop":
-		return np.DoDrop(cl)
+		err = np.DoDrop(cl)
 	case "truncate":
-		return np.Truncate(cl)
+		err = np.Truncate(cl)
 	case "insert":
-		return np.Insert(cl)
+		err = np.Insert(cl)
 	case "randomRead":
-		return np.RandomRead(cl)
+		err = np.RandomRead(cl)
 	case "randomUpdate":
-		return np.RandomUpdate(cl)
+		err = np.RandomUpdate(cl)
 	case "randomReplace":
-		return np.RandomReplace(cl)
+		err = np.RandomReplace(cl)
 	case "createIdx":
-		return np.CreateIdx(cl)
+		err = np.CreateIdx(cl)
 	case "dropIdx":
-		return np.DropIdx(cl)
+		err = np.DropIdx(cl)
 	case "queryOnIdx":
-		return np.RunQueryOnIdx(cl)
+		err = np.RunQueryOnIdx(cl)
 	case "dropDatabase":
-		return np.DropDatabase(cl)
+		err = np.DropDatabase(cl)
+	default:
+		err = nil
 	}
-	return nil
+	np.EndTime = time.Now()
+	np.RunTime = np.EndTime.Sub(np.StartTime)
+	return err
 }

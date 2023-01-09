@@ -25,6 +25,25 @@ type GraphProg struct {
 	GraphBranching int64
 	GraphDirection string
 	OutFormat      string
+	feedlang.ProgMeta
+}
+
+func (g *GraphProg) Lines() (int, int) {
+	return g.StartLine, g.EndLine
+}
+
+func (g *GraphProg) StatsOutput() []string {
+	return []string{
+		fmt.Sprintf("graph: Have run for %v (lines %d..%d of script)\n",
+			g.EndTime.Sub(g.StartTime), g.StartLine, g.EndLine),
+		fmt.Sprintf("       Start time: %v\n", g.StartTime),
+		fmt.Sprintf("       End time  : %v\n", g.EndTime),
+	}
+}
+
+func (g *GraphProg) StatsJSON() interface{} {
+	g.Type = "graph"
+	return g
 }
 
 var (
@@ -35,7 +54,7 @@ var (
 	}
 )
 
-func NewGraphProg(args []string) (feedlang.Program, error) {
+func NewGraphProg(args []string, line int) (feedlang.Program, error) {
 	// This function parses the command line args and fills the values in
 	// the struct.
 
@@ -56,6 +75,7 @@ func NewGraphProg(args []string) (feedlang.Program, error) {
 		GraphBranching: GetInt64Value(m, "graphBranching", 2),
 		GraphDirection: GetStringValue(m, "graphDirection", "downwards"),
 		OutFormat:      GetStringValue(m, "outFormat", ""),
+		ProgMeta:       feedlang.ProgMeta{StartLine: line, EndLine: line},
 	}
 
 	if _, hasKey := graphSubprograms[subCmd]; !hasKey {

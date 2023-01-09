@@ -9,33 +9,137 @@ import (
 	"time"
 )
 
-type Program interface {
-	Execute() error
+type ProgMeta struct {
+	StartLine int           `json:"startLine"`
+	EndLine   int           `json:"endLine"`
+	StartTime time.Time     `json:"startTime"`
+	EndTime   time.Time     `json:"endTime"`
+	RunTime   time.Duration `json:"runTime"`
+	Type      string        `json:"type"`
 }
 
-type Maker func(args []string) (Program, error)
+type Program interface {
+	Execute() error         // Runs the program
+	Lines() (int, int)      // Returns the input lines of the program
+	StatsOutput() []string  // Run after Execute
+	StatsJSON() interface{} // Run after Execute, result must be serializable
+}
+
+type Maker func(args []string, line int) (Program, error)
 
 var Atoms map[string]Maker
 
 type Sequential struct {
 	Steps []Program
+	ProgMeta
+}
+
+func (s *Sequential) Lines() (int, int) {
+	return s.StartLine, s.EndLine
+}
+
+func (s *Sequential) StatsOutput() []string {
+	res := []string{
+		fmt.Sprintf("sequential: Runtime: %v (lines %d..%d of script)\n",
+			s.EndTime.Sub(s.StartTime), s.StartLine, s.EndLine),
+		fmt.Sprintf("      Start time: %v\n", s.StartTime),
+		fmt.Sprintf("      End time  : %v\n", s.EndTime),
+	}
+	for i := 0; i < len(s.Steps); i += 1 {
+		res = append(res, []string{
+			"\n",
+			fmt.Sprintf("Step %d (%d) of sequential program:\n", i+1, len(s.Steps)),
+			"\n",
+		}...)
+		sub := s.Steps[i].StatsOutput()
+		res = append(res, sub...)
+		res = append(res, "\n")
+	}
+	res = append(res, fmt.Sprintf("sequential: Report finished (lines %d..%d of scripts)\n",
+		s.StartLine, s.EndLine))
+	res = append(res, "\n")
+	return res
+}
+
+type SequentialStats struct {
+	Steps []interface{}
+	ProgMeta
+}
+
+func (s *Sequential) StatsJSON() interface{} {
+	ss := SequentialStats{ProgMeta: s.ProgMeta}
+	ss.Type = "sequential"
+	for _, st := range s.Steps {
+		ss.Steps = append(ss.Steps, st.StatsJSON())
+	}
+	return ss
 }
 
 type Parallel struct {
 	Steps []Program
+	ProgMeta
 }
 
+type ParallelStats struct {
+	Steps []interface{}
+	ProgMeta
+}
+
+func (p *Parallel) Lines() (int, int) {
+	return p.StartLine, p.EndLine
+}
+
+func (p *Parallel) StatsOutput() []string {
+	res := []string{
+		fmt.Sprintf("parallel: Runtime: %v (lines %d..%d of script)\n",
+			p.EndTime.Sub(p.StartTime), p.StartLine, p.EndLine),
+		fmt.Sprintf("      Start time: %v\n", p.StartTime),
+		fmt.Sprintf("      End time  : %v\n", p.EndTime),
+	}
+	for i := 0; i < len(p.Steps); i += 1 {
+		res = append(res, []string{
+			"\n",
+			fmt.Sprintf("Step %d (%d) of parallel program:\n", i+1, len(p.Steps)),
+			"\n",
+		}...)
+		sub := p.Steps[i].StatsOutput()
+		res = append(res, sub...)
+		res = append(res, "\n")
+	}
+	res = append(res, fmt.Sprintf("sequential: Report finished (lines %d..%d of scripts)\n",
+		p.StartLine, p.EndLine))
+	res = append(res, "\n")
+	return res
+}
+
+func (p *Parallel) StatsJSON() interface{} {
+	ps := ParallelStats{ProgMeta: p.ProgMeta}
+	ps.Type = "parallel"
+	for _, st := range p.Steps {
+		ps.Steps = append(ps.Steps, st.StatsJSON())
+	}
+	return ps
+}
+
+// Execution:
+
 func (s *Sequential) Execute() error {
+	s.StartTime = time.Now()
 	for _, step := range s.Steps {
 		err := step.Execute()
 		if err != nil {
+			s.EndTime = time.Now()
+			s.RunTime = s.EndTime.Sub(s.StartTime)
 			return err
 		}
 	}
+	s.EndTime = time.Now()
+	s.RunTime = s.EndTime.Sub(s.StartTime)
 	return nil
 }
 
 func (s *Parallel) Execute() error {
+	s.StartTime = time.Now()
 	nr := len(s.Steps)
 	errs := make([]error, nr, nr)
 	wg := sync.WaitGroup{}
@@ -47,6 +151,8 @@ func (s *Parallel) Execute() error {
 		}(&wg, i, step)
 	}
 	wg.Wait()
+	s.EndTime = time.Now()
+	s.RunTime = s.EndTime.Sub(s.StartTime)
 	for i := 0; i < nr; i += 1 {
 		if errs[i] != nil {
 			return errs[i]
@@ -56,10 +162,12 @@ func (s *Parallel) Execute() error {
 }
 
 type WaitProg struct {
-	i int
+	i int `json:"-"`
+	ProgMeta
 }
 
 func (dp *WaitProg) Execute() error {
+	dp.StartTime = time.Now()
 	config.OutputMutex.Lock()
 	fmt.Printf("Wait: I am working %d\n", dp.i)
 	config.OutputMutex.Unlock()
@@ -69,10 +177,30 @@ func (dp *WaitProg) Execute() error {
 	config.OutputMutex.Lock()
 	fmt.Printf("Wait: I am done %d\n", dp.i)
 	config.OutputMutex.Unlock()
+	dp.EndTime = time.Now()
+	dp.RunTime = dp.EndTime.Sub(dp.StartTime)
 	return nil
 }
 
-func WaitMaker(args []string) (Program, error) {
+func (w *WaitProg) Lines() (int, int) {
+	return w.StartLine, w.EndLine
+}
+
+func (w *WaitProg) StatsOutput() []string {
+	return []string{
+		fmt.Sprintf("wait: Have waited %d seconds (lines %d..%d of script)\n",
+			w.i, w.StartLine, w.EndLine),
+		fmt.Sprintf("      Start time: %v\n", w.StartTime),
+		fmt.Sprintf("      End time  : %v\n", w.EndTime),
+	}
+}
+
+func (w *WaitProg) StatsJSON() interface{} {
+	w.Type = "wait"
+	return w
+}
+
+func WaitMaker(args []string, line int) (Program, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("Expecting one integer argument!")
 	}
@@ -80,7 +208,7 @@ func WaitMaker(args []string) (Program, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Could not parse integer %s: %v\n", args[0], err)
 	}
-	return &WaitProg{i: int(i)}, nil
+	return &WaitProg{i: int(i), ProgMeta: ProgMeta{StartLine: line, EndLine: line}}, nil
 }
 
 func init() {
@@ -106,6 +234,7 @@ func getLine(lines []string, pos *int) (string, error) {
 // parserRecursion parses one Program starting at pos in lines and
 // returns it if this is possible. pos is advanced.
 func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
+	startLine := *pos
 	line, err := getLine(lines, pos)
 	if err != nil {
 		return nil, err
@@ -129,6 +258,8 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 			}
 			par.Steps = append(par.Steps, prog)
 		}
+		par.StartLine = startLine + 1
+		par.EndLine = *pos + 1
 		*pos += 1 // consume ]
 		return &par, nil
 	} else if line == "[" {
@@ -150,6 +281,8 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 			}
 			seq.Steps = append(seq.Steps, prog)
 		}
+		seq.StartLine = startLine + 1
+		seq.EndLine = *pos + 1
 		*pos += 1 // consume ]
 		return &seq, nil
 	} else if line == "}" {
@@ -167,7 +300,7 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 	if !ok {
 		return nil, fmt.Errorf("No Maker for first word %s in line %d of input in depth %d", cmd, *pos+1, depth)
 	}
-	prog, err := maker(args)
+	prog, err := maker(args, *pos+1)
 	if err != nil {
 		return nil, fmt.Errorf("Got error from Maker for %s with args %v in line %d of input in depth %d", cmd, args, *pos+1, depth)
 	}

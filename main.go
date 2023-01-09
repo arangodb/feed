@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"bufio"
+	"encoding/json"
 	"net/http"
 	"os"
 	"strconv"
@@ -32,7 +33,33 @@ func init() {
 	flags.StringVar(&config.Password, "password", "", "Password for database access.")
 	flags.StringVar(&ProgName, "execute", "doit.feed", "Filename of program to execute.")
 	flags.StringVar(&config.Protocol, "protocol", "vst", "Protocol (http1, http2, vst)")
+	flags.StringVar(&config.JSONOutput, "jsonOutputFile", "feed.json", "Filename for JSON result output.")
 	flags.IntVar(&config.MetricsPort, "metricsPort", 8888, "Metrics port (0 for no metrics)")
+}
+
+func produceJSONResult(prog feedlang.Program, fileName string) {
+	var res interface{} = prog.StatsJSON()
+	by, err := json.Marshal(res)
+	if err != nil {
+		fmt.Printf("Error in producing JSON output of results: %v, object: %v\n",
+			err, res)
+		return
+	}
+	err = os.WriteFile(fileName, by, 0644)
+	if err != nil {
+		fmt.Printf("Could not create JSON output file: %s, error: %v\n",
+			fileName, err)
+		return
+	}
+}
+
+func produceResult(prog feedlang.Program) {
+	var out []string = prog.StatsOutput()
+	fmt.Printf("---------------\n--- RESULTS ---\n---------------\n\n")
+	for i := 0; i < len(out); i += 1 {
+		fmt.Print(out[i])
+	}
+	fmt.Printf("\n-------------------------------------------------\n")
 }
 
 func mainExecute(cmd *cobra.Command, _ []string) error {
@@ -79,6 +106,8 @@ func mainExecute(cmd *cobra.Command, _ []string) error {
 		fmt.Printf("Error in execution: %v\n", err)
 		os.Exit(4)
 	}
+	produceJSONResult(prog, config.JSONOutput)
+	produceResult(prog)
 	return nil
 }
 

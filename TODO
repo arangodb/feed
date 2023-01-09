@@ -1,9 +1,6 @@
- - Finish teratest.feed and try it out on a single server.
- - Baseline timings for teratest.feed.
- - Deliver teratest.feed to Speedb.
+ - Better human readable output of results. 
+ - Revamp JSON output to make it more readable/usable. Probably dump to file.
+ - Finish Grafana dashboards, upload to repository.
 
  - Fix testing code for larger graphs (blocked channels).
- - Revamp JSON output to make it more readable.
  - Add histograms with execution times to metrics.
- - Finish Grafana dashboards, upload to repository.
- - Debug error in teratest.feed (random read reading unknown key)

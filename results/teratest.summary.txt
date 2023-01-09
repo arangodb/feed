@@ -15,3 +15,25 @@ Parallel replace &      114319          100%            46085            40%    
     random read         69911           100%            106847          153%    72912           104%            146%                            53292            76%
 Parallel update &       93677           100%            45783            49%    84914            91%             54%                            111050          118%
     random read         59008           100%            98705           167%    119160          202%             83%                            53613            91%
+
+                        ArangoDB 3.10.2,        ArangoDB 3.10.2
+                        12bit bloom,            12bit bloom
+                        new options             new options,
+                                                5 uncompressed levels
+Test                    
+Bulk insert             218158                  228275
+Random reads            173615                  166640
+Bulk reads              423                     424
+Random index reads      207880                  199013
+Bulk index reads        267                     267
+Random replace (batch)  113478                  106741
+Random update (batch)   104128                  96567
+Parallel insert 2 colls 117028+117012           126390+126317
+Parallel replace &      128292                  121472
+    random read         72260                   58950
+Parallel update &       117545                  115139
+    random read         65110                   69160
+
+
+
+

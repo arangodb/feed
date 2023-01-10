@@ -55,7 +55,7 @@ func produceJSONResult(prog feedlang.Program, fileName string) {
 
 func produceResult(prog feedlang.Program) {
 	var out []string = prog.StatsOutput()
-	fmt.Printf("---------------\n--- RESULTS ---\n---------------\n\n")
+	fmt.Printf("\n\n---------------\n--- RESULTS ---\n---------------\n\n")
 	for i := 0; i < len(out); i += 1 {
 		fmt.Print(out[i])
 	}
@@ -68,7 +68,7 @@ func mainExecute(cmd *cobra.Command, _ []string) error {
 
 	// Expose metrics:
 	if config.MetricsPort != 0 {
-		fmt.Printf("Exposing Prometheus metrics on port %d under /metrics...\n\n",
+		fmt.Printf("Exposing Prometheus metrics on port %d under /metrics...\n",
 			config.MetricsPort)
 		go func() {
 			http.Handle("/metrics", promhttp.Handler())

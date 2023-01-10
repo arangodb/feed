@@ -11,11 +11,79 @@ import (
 	"github.com/arangodb/feed/pkg/metrics"
 	"github.com/arangodb/go-driver"
 	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+type NormalStatsOneThread struct {
+	Average                  time.Duration `json:"average"`
+	Median                   time.Duration `json:"median"`
+	Percentile90             time.Duration `json:"percentile90"`
+	Percentile99             time.Duration `json:"percentile99"`
+	Minimum                  time.Duration `json:"minimum"`
+	Maximum                  time.Duration `json:"maximum"`
+	OpsPerSecond             float64       `json:"opsPerSecond"`
+	NumberOps                int64         `json:"numberOps"`
+	TotalTime                time.Duration `json:"totalTime"`
+	NumReplaceWriteConflicts int64         `json:"numberReplaceWriteConflicts"`
+	NumUpdateWriteConflicts  int64         `json:"numberUpdateWriteConflicts"`
+	HaveError                bool          `json:"haveError"`
+}
+
+func (ns *NormalStatsOneThread) FillInStats(times []time.Duration) {
+	sort.Sort(DurationSlice(times))
+	var sum int64 = 0
+	for _, t := range times {
+		sum = sum + int64(t)
+	}
+	nr := int64(len(times))
+
+	ns.Median = times[int(float64(0.5)*float64(nr))]
+	ns.Percentile90 = times[int(float64(0.9)*float64(nr))]
+	ns.Percentile99 = times[int(float64(0.99)*float64(nr))]
+	ns.Average = time.Duration(sum / nr)
+	ns.Minimum = times[0]
+	ns.Maximum = times[len(times)-1]
+}
+
+func AggregateStats(stats []NormalStatsOneThread, totalTime time.Duration) NormalStatsOneThread {
+	var t NormalStatsOneThread
+	len := len(stats)
+	for _, s := range stats {
+		t.Average += s.Average
+		if t.Minimum == 0 || s.Minimum < t.Minimum {
+			t.Minimum = s.Minimum
+		}
+		if s.Maximum > t.Maximum {
+			t.Maximum = s.Maximum
+		}
+		t.Median += s.Median             // we take the average of the medians
+		t.Percentile90 += s.Percentile90 // same
+		t.Percentile99 += s.Percentile99 // same
+		t.OpsPerSecond += s.OpsPerSecond
+		t.NumberOps += s.NumberOps // sum here
+		t.NumUpdateWriteConflicts += s.NumUpdateWriteConflicts
+		t.NumReplaceWriteConflicts += s.NumReplaceWriteConflicts
+	}
+	t.Average /= time.Duration(len)
+	t.Median /= time.Duration(len)
+	t.Percentile90 /= time.Duration(len)
+	t.Percentile99 /= time.Duration(len)
+	t.OpsPerSecond /= float64(len)
+	// We intentionally leave the TotalTime and HaveError empty, this has
+	// to be supplied from the outside!
+	return t
+}
+
+type NormalStats struct {
+	Threads []NormalStatsOneThread `json:"threads"`
+	Overall NormalStatsOneThread   `json:"overall"`
+	Mutex   sync.Mutex             `json:"-"`
+	feedlang.ProgMeta
+}
 
 type NormalProg struct {
 	// General parameters:
@@ -46,26 +114,8 @@ type NormalProg struct {
 	// Parameter for statistics (possibly other outputs) format
 	OutFormat string
 
-	// Runtime meta data:
-	feedlang.ProgMeta
-}
-
-func (n *NormalProg) Lines() (int, int) {
-	return n.StartLine, n.EndLine
-}
-
-func (n *NormalProg) StatsOutput() []string {
-	return []string{
-		fmt.Sprintf("normal: Have run for %v (lines %d..%d of script)\n",
-			n.EndTime.Sub(n.StartTime), n.StartLine, n.EndLine),
-		fmt.Sprintf("        Start time: %v\n", n.StartTime),
-		fmt.Sprintf("        End time  : %v\n", n.EndTime),
-	}
-}
-
-func (n *NormalProg) StatsJSON() interface{} {
-	n.Type = "normal (" + n.SubCommand + ")"
-	return n
+	// Statistics:
+	Stats NormalStats
 }
 
 type WriteConflictStats struct {
@@ -73,13 +123,46 @@ type WriteConflictStats struct {
 	numReplaceWriteConflicts int64
 }
 
+func (n *NormalProg) Lines() (int, int) {
+	return n.Stats.StartLine, n.Stats.EndLine
+}
+
+func (s *NormalStatsOneThread) StatsToStrings() []string {
+	return []string{
+		fmt.Sprintf("  NumberOps : %d\n", s.NumberOps),
+		fmt.Sprintf("  OpsPerSec : %f\n", s.OpsPerSecond),
+		fmt.Sprintf("  Median    : %v\n", s.Median),
+		fmt.Sprintf("  90%%ile   : %v\n", s.Percentile90),
+		fmt.Sprintf("  99%%ile   : %v\n", s.Percentile99),
+		fmt.Sprintf("  Average   : %v\n", s.Average),
+		fmt.Sprintf("  Minimum   : %v\n", s.Minimum),
+		fmt.Sprintf("  Maximum   : %v\n", s.Maximum),
+	}
+}
+
+func (n *NormalProg) StatsOutput() []string {
+	res := []string{
+		fmt.Sprintf("normal (%s): Have run for %v (lines %d..%d of script)\n",
+			n.SubCommand, n.Stats.EndTime.Sub(n.Stats.StartTime), n.Stats.StartLine,
+			n.Stats.EndLine),
+		fmt.Sprintf("  Start time: %v\n", n.Stats.StartTime),
+		fmt.Sprintf("  End time  : %v\n", n.Stats.EndTime),
+	}
+	res = append(res, n.Stats.Overall.StatsToStrings()...)
+	return res
+}
+
+func (n *NormalProg) StatsJSON() interface{} {
+	return &n.Stats
+}
+
 var (
-	writeConflictStats WriteConflictStats
-	normalSubprograms  = map[string]struct{}{"create": {}, "insert": {},
+	normalSubprograms = map[string]struct{}{"create": {}, "insert": {},
 		"randomRead": {}, "randomUpdate": {}, "randomReplace": {},
 		"createIdx": {}, "dropIdx": {}, "queryOnIdx": {}, "drop": {},
 		"truncate": {}, "dropDatabase": {},
 	}
+	writeConflictStats WriteConflictStats
 )
 
 func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
@@ -130,8 +213,9 @@ func NewNormalProg(args []string, line int) (feedlang.Program, error) {
 	if _, hasKey := normalSubprograms[np.SubCommand]; !hasKey {
 		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
-	np.StartLine = line
-	np.EndLine = line
+	np.Stats.StartLine = line
+	np.Stats.EndLine = line
+	np.Stats.Type = "normal (" + subCmd + ")"
 	return np, nil
 }
 
@@ -238,9 +322,8 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 	// Number of batches to put into the collection:
 	number := (np.DocConfig.Size / np.DocConfig.SizePerDoc) / np.BatchSize
 
-	config.OutputMutex.Lock()
-	fmt.Printf("\nnormal: Will write %d batches of %d docs across %d goroutines...\n\n", number, np.BatchSize, np.Parallelism)
-	config.OutputMutex.Unlock()
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: Will write %d batches of %d docs across %d goroutines...\n", number, np.BatchSize, np.Parallelism))
 
 	if err := writeSomeBatchesParallel(np, number); err != nil {
 		return fmt.Errorf("can not do some batch imports")
@@ -328,7 +411,7 @@ func runQueryOnIdxInParallel(np *NormalProg) error {
 	if err != nil {
 		return fmt.Errorf("\nqueryOnIdx: can not obtain output format, %v", err)
 	}
-	err = database.RunParallel(np.Parallelism, np.StartDelay, "queryOnIdx", func(id int64) error {
+	err = RunParallel(np.Parallelism, np.StartDelay, "queryOnIdx", func(id int64) error {
 		// Let's use our own private client and connection here:
 		cl, err := config.MakeClient()
 		if err != nil {
@@ -443,9 +526,7 @@ func createIdx(np *NormalProg) error {
 	totaltimestart := time.Now()
 	haveError := false
 	if config.Verbose {
-		config.OutputMutex.Lock()
-		fmt.Printf("normal: Starting idxCreation...\n")
-		config.OutputMutex.Unlock()
+		PrintTS("normal (idxCreate): Starting idxCreation...\n")
 	}
 	// Let's use our own private client and connection here:
 	cl, err := config.MakeClient()
@@ -553,9 +634,7 @@ func dropIdx(np *NormalProg) error {
 	totaltimestart := time.Now()
 	haveError := false
 	if config.Verbose {
-		config.OutputMutex.Lock()
-		fmt.Printf("normal: Starting idx drop...\n")
-		config.OutputMutex.Unlock()
+		PrintTS("normal (idxDrop): Starting idx drop...\n")
 	}
 	// Let's use our own private client and connection here:
 	cl, err := config.MakeClient()
@@ -648,9 +727,8 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 	if err != nil {
 		return fmt.Errorf("\nrandomReplace: can not obtain output format, %v", err)
 	}
-	var mtx sync.Mutex
 
-	err = database.RunParallel(np.Parallelism, np.StartDelay, "randomReplace", func(id int64) error {
+	err = RunParallel(np.Parallelism, np.StartDelay, "randomReplace", func(id int64) error {
 		// Let's use our own private client and connection here:
 		cl, err := config.MakeClient()
 		if err != nil {
@@ -691,6 +769,7 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		// It is crucial that every go routine has its own random source, otherwise
 		// we create a lot of contention.
 		source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
+		stats := NormalStatsOneThread{}
 
 		for i := int64(1); i <= np.LoadPerThread; i++ {
 			keys := make([]string, 0, batchSizeLimit)
@@ -712,9 +791,7 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 				if driver.IsPreconditionFailed(err) {
 					writeConflicts++
 				} else {
-					mtx.Lock()
-					writeConflictStats.numReplaceWriteConflicts += writeConflicts
-					mtx.Unlock()
+					stats.NumReplaceWriteConflicts += writeConflicts
 					return fmt.Errorf("Can not replace documents %v\n", err)
 				}
 			}
@@ -745,9 +822,7 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		if err != nil {
 			return fmt.Errorf("\nrandomReplace: can not write statistics in JSON format, %v", err)
 		}
-		mtx.Lock()
-		writeConflictStats.numReplaceWriteConflicts += writeConflicts
-		mtx.Unlock()
+		stats.NumReplaceWriteConflicts += writeConflicts
 		return nil
 	}, func(totaltime time.Duration, haveError bool) error {
 		replacespersec := float64(np.Parallelism*np.LoadPerThread*np.BatchSize) / (float64(totaltime) / float64(time.Second))
@@ -780,7 +855,7 @@ func updateRandomlyInParallel(np *NormalProg) error {
 	}
 	var mtx sync.Mutex
 
-	err = database.RunParallel(np.Parallelism, np.StartDelay, "randomUpdate", func(id int64) error {
+	err = RunParallel(np.Parallelism, np.StartDelay, "randomUpdate", func(id int64) error {
 		// Let's use our own private client and connection here:
 		cl, err := config.MakeClient()
 		if err != nil {
@@ -820,6 +895,7 @@ func updateRandomlyInParallel(np *NormalProg) error {
 		// It is crucial that every go routine has its own random source, otherwise
 		// we create a lot of contention.
 		source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
+		stats := NormalStatsOneThread{}
 
 		for i := int64(1); i <= np.LoadPerThread; i++ {
 			keys := make([]string, 0, batchSizeLimit)
@@ -842,9 +918,7 @@ func updateRandomlyInParallel(np *NormalProg) error {
 				if driver.IsPreconditionFailed(err) {
 					writeConflicts++
 				} else {
-					mtx.Lock()
-					writeConflictStats.numUpdateWriteConflicts += writeConflicts
-					mtx.Unlock()
+					stats.NumUpdateWriteConflicts += writeConflicts
 					return fmt.Errorf("Can not update documents %v\n", err)
 				}
 			}
@@ -911,7 +985,7 @@ func readRandomlyInParallel(np *NormalProg) error {
 		return fmt.Errorf("\nrandomRead: can not obtain output format, %v", err)
 	}
 
-	err = database.RunParallel(np.Parallelism, np.StartDelay, "randomRead", func(id int64) error {
+	err = RunParallel(np.Parallelism, np.StartDelay, "randomRead", func(id int64) error {
 		// Let's use our own private client and connection here:
 		cl, err := config.MakeClient()
 		if err != nil {
@@ -1000,11 +1074,7 @@ func readRandomlyInParallel(np *NormalProg) error {
 
 // writeSomeBatchesParallel does some batch imports in parallel
 func writeSomeBatchesParallel(np *NormalProg, number int64) error {
-	isJSON, err := ValidateOutFormat(np.OutFormat)
-	if err != nil {
-		return fmt.Errorf("\nwriteSomeBatchesInParallel: can not obtain output format, %v", err)
-	}
-	err = database.RunParallel(np.Parallelism, np.StartDelay, "writeSomeBatches", func(id int64) error {
+	err := RunParallel(np.Parallelism, np.StartDelay, "writeSomeBatches", func(id int64) error {
 		nrBatches := number / np.Parallelism
 
 		// Let's use our own private client and connection here:
@@ -1046,7 +1116,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 			_, _, err := edges.CreateDocuments(ctx, docs)
 			cancel()
 			if err != nil {
-				fmt.Printf("writeSomeBatches: could not write batch: %v\n", err)
+				PrintTS(fmt.Sprintf("writeSomeBatches: could not write batch: %v", err))
 				return err
 			}
 			metrics.DocumentsInserted.Add(float64(np.BatchSize))
@@ -1059,9 +1129,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 
 				// Intermediate report:
 				if config.Verbose {
-					config.OutputMutex.Lock()
-					fmt.Printf("normal: %s Have imported %d batches for id %d, last 100 took %f seconds.\n", time.Now(), int(i), id, dur)
-					config.OutputMutex.Unlock()
+					PrintTS(fmt.Sprintf("normal: %s Have imported %d batches for id %d, last 100 took %f seconds.\n", time.Now(), int(i), id, dur))
 				}
 			}
 		}
@@ -1069,39 +1137,35 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 		totaltime := time.Now().Sub(cyclestart)
 		nrDocs := np.BatchSize * nrBatches
 		docspersec := float64(nrDocs) / (float64(totaltime) / float64(time.Second))
+		stats := NormalStatsOneThread{
+			TotalTime:    totaltime,
+			NumberOps:    nrDocs,
+			OpsPerSecond: docspersec,
+		}
+		stats.FillInStats(times)
+		PrintStatistics(&stats, fmt.Sprintf("normal (insert):\n  Times for inserting %d batches.\n  docs per second in this go routine: %f", nrBatches, docspersec))
 
-		if isJSON {
-			// JSON format
-			msg := `{"normal": {"numBatches": ` + strconv.FormatInt(nrBatches, 10) + `, "docsPerSec": ` + fmt.Sprintf("%f", docspersec) + "}}"
-			err = WriteStatisticsForTimes(times, msg, true)
-		} else {
-			err = WriteStatisticsForTimes(times,
-				fmt.Sprintf("\nnormal: Times for inserting %d batches.\n  docs per second in this go routine: %f", nrBatches, docspersec), false)
-		}
-		if err != nil {
-			return fmt.Errorf("\nwriteSomeBatches: can not write statistics in JSON format, %v", err)
-		}
+		// Report back:
+		np.Stats.Mutex.Lock()
+		np.Stats.Threads = append(np.Stats.Threads, stats)
+		np.Stats.Mutex.Unlock()
+
 		return nil
 	}, func(totaltime time.Duration, haveError bool) error {
+		// Here, we aggregate the data from all threads and report for the
+		// whole command:
+		np.Stats.Overall = AggregateStats(np.Stats.Threads, totaltime)
+		np.Stats.Overall.TotalTime = totaltime
+		np.Stats.Overall.HaveError = haveError
 		batchesPerSec := float64(number) / (float64(totaltime) / float64(time.Second))
 		docspersec := float64(number*np.BatchSize) / (float64(totaltime) / float64(time.Second))
 
-		var msg string
-		if isJSON {
-			msg = fmt.Sprintf(`{"normal": {"totalNumDocsWritten": %d, "totalBatchesPerSec": %f, "totalDocsPerSec": %f, "withErrors": %v}}`, number*np.BatchSize, batchesPerSec, docspersec, haveError)
-			msg, err = PrettyPrintToJSON(msg)
-			if err != nil {
-				return fmt.Errorf("can not write statistics in JSON format: %v", err)
-			}
-		} else {
-			msg = fmt.Sprintf("\nnormal: Total number of documents written: %d,\n  total batches per second: %f,\n  total docs per second: %f, \n with errors %v, \n\n", number*np.BatchSize, batchesPerSec, docspersec, haveError)
-		}
-		config.OutputMutex.Lock()
-		fmt.Printf(msg)
-		config.OutputMutex.Unlock()
+		msg := fmt.Sprintf("normal (insert):\n  Total number of documents written: %d,\n  total batches per second: %f,\n  total docs per second: %f,\n  with errors: %v", number*np.BatchSize, batchesPerSec, docspersec, haveError)
+		statsmsg := np.Stats.Overall.StatsToStrings()
+		PrintTSs(msg, statsmsg)
+
 		return nil
-	},
-	)
+	})
 	if err != nil {
 		return fmt.Errorf("can not write some batches in parallel: %v", err)
 	}
@@ -1112,7 +1176,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 // subcommand is chosen in the arguments.
 func (np *NormalProg) Execute() error {
 	// This actually executes the NormalProg:
-	np.StartTime = time.Now()
+	np.Stats.StartTime = time.Now()
 	var cl driver.Client
 	var err error
 	if config.Jwt != "" {
@@ -1121,8 +1185,8 @@ func (np *NormalProg) Execute() error {
 		cl, err = client.NewClient(config.Endpoints, driver.BasicAuthentication(config.Username, config.Password), config.Protocol)
 	}
 	if err != nil {
-		np.EndTime = time.Now()
-		np.RunTime = np.EndTime.Sub(np.StartTime)
+		np.Stats.EndTime = time.Now()
+		np.Stats.RunTime = np.Stats.EndTime.Sub(np.Stats.StartTime)
 		return fmt.Errorf("Could not connect to database at %v: %v\n", config.Endpoints, err)
 	}
 	switch np.SubCommand {
@@ -1151,7 +1215,7 @@ func (np *NormalProg) Execute() error {
 	default:
 		err = nil
 	}
-	np.EndTime = time.Now()
-	np.RunTime = np.EndTime.Sub(np.StartTime)
+	np.Stats.EndTime = time.Now()
+	np.Stats.RunTime = np.Stats.EndTime.Sub(np.Stats.StartTime)
 	return err
 }

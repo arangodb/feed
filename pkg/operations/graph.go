@@ -194,7 +194,7 @@ func (gp *GraphProg) Insert(what string) error {
 		what, numberBatches, gp.BatchSize, gp.Parallelism)
 	config.OutputMutex.Unlock()
 
-	err = database.RunParallel(gp.Parallelism, gp.StartDelay, "graph",
+	err = RunParallel(gp.Parallelism, gp.StartDelay, "graph",
 		func(id int64) error {
 			// Let's use our own private client and connection here:
 			cl, err := config.MakeClient()

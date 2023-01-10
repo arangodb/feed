@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -151,6 +152,35 @@ func (d DurationSlice) Swap(a, b int) {
 	d[b] = dummy
 }
 
+func PrintTS(s string) {
+	config.OutputMutex.Lock()
+	fmt.Printf("%v: %s\n", time.Now(), s)
+	config.OutputMutex.Unlock()
+}
+
+func PrintTSs(msg string, s []string) {
+	config.OutputMutex.Lock()
+	fmt.Printf("%v: %s\n", time.Now(), msg)
+	for _, ss := range s {
+		fmt.Print(ss)
+	}
+	config.OutputMutex.Unlock()
+}
+
+func Print(s string) {
+	config.OutputMutex.Lock()
+	fmt.Printf("%s\n", s)
+	config.OutputMutex.Unlock()
+}
+
+func PrintStatistics(stats *NormalStatsOneThread, msg string) {
+	config.OutputMutex.Lock()
+	fmt.Printf("%v %s:\n  %s (median),\n  %s (90%%ile),\n  %s (99%%ilie),\n  %s (average),\n  %s (minimum),\n  %s (maximum)\n\n",
+		time.Now(), msg, stats.Median, stats.Percentile90, stats.Percentile99,
+		stats.Average, stats.Minimum, stats.Maximum)
+	config.OutputMutex.Unlock()
+}
+
 func WriteStatisticsForTimes(times []time.Duration, msg string, isJSON bool) error {
 	sort.Sort(DurationSlice(times))
 	var sum int64 = 0
@@ -192,4 +222,46 @@ func PrettyPrintToJSON(str string) (string, error) {
 		return "", err
 	}
 	return prettyJSON.String(), nil
+}
+
+func RunParallel(parallelism int64, startDelay int64, jobName string,
+	action func(id int64) error,
+	finalReport func(totalTime time.Duration, haveError bool) error) error {
+	totaltimestart := time.Now()
+	wg := sync.WaitGroup{}
+	haveError := false
+	for i := 0; i <= int(parallelism)-1; i++ {
+		time.Sleep(time.Duration(startDelay) * time.Millisecond)
+		i := i // bring into scope
+		wg.Add(1)
+
+		go func(wg *sync.WaitGroup, i int) {
+			defer wg.Done()
+			if config.Verbose {
+				PrintTS(fmt.Sprintf("%s: Starting go routine...\n", jobName))
+			}
+			err := action(int64(i))
+			if err != nil {
+				fmt.Printf("%s error: %v\n", jobName, err)
+				haveError = true
+			}
+			if config.Verbose {
+				PrintTS(fmt.Sprintf("%s: Go routine %d done\n", jobName, i))
+			}
+		}(&wg, i)
+	}
+
+	wg.Wait()
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+	if finalReport != nil {
+		err := finalReport(totaltime, haveError)
+		if err != nil {
+			return fmt.Errorf("Error in job %s.", jobName)
+		}
+	}
+	if !haveError {
+		return nil
+	}
+	return fmt.Errorf("Error in job %s.", jobName)
 }

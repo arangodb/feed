@@ -2,11 +2,7 @@ package database
 
 import (
 	"context"
-	"fmt"
-	"sync"
-	"time"
 
-	"github.com/arangodb/feed/pkg/config"
 	"github.com/arangodb/go-driver"
 
 	err2 "github.com/pkg/errors"
@@ -77,50 +73,4 @@ func CreateOrGetDatabaseCollection(ctx context.Context, client driver.Client, DB
 	}
 
 	return nil, err
-}
-
-func RunParallel(parallelism int64, startDelay int64, jobName string,
-	action func(id int64) error,
-	finalReport func(totalTime time.Duration, haveError bool) error) error {
-	totaltimestart := time.Now()
-	wg := sync.WaitGroup{}
-	haveError := false
-	for i := 0; i <= int(parallelism)-1; i++ {
-		time.Sleep(time.Duration(startDelay) * time.Millisecond)
-		i := i // bring into scope
-		wg.Add(1)
-
-		go func(wg *sync.WaitGroup, i int) {
-			defer wg.Done()
-			if config.Verbose {
-				config.OutputMutex.Lock()
-				fmt.Printf("%s: Starting go routine...\n", jobName)
-				config.OutputMutex.Unlock()
-			}
-			err := action(int64(i))
-			if err != nil {
-				fmt.Printf("%s error: %v\n", jobName, err)
-				haveError = true
-			}
-			if config.Verbose {
-				config.OutputMutex.Lock()
-				fmt.Printf("%s: Go routine %d done\n", jobName, i)
-				config.OutputMutex.Unlock()
-			}
-		}(&wg, i)
-	}
-
-	wg.Wait()
-	totaltimeend := time.Now()
-	totaltime := totaltimeend.Sub(totaltimestart)
-	if finalReport != nil {
-		err := finalReport(totaltime, haveError)
-		if err != nil {
-			return fmt.Errorf("Error in job %s.", jobName)
-		}
-	}
-	if !haveError {
-		return nil
-	}
-	return fmt.Errorf("Error in job %s.", jobName)
 }

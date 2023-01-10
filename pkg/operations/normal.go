@@ -723,12 +723,7 @@ func dropIdx(np *NormalProg) error {
 }
 
 func replaceRandomlyInParallel(np *NormalProg) error {
-	isJSON, err := ValidateOutFormat(np.OutFormat)
-	if err != nil {
-		return fmt.Errorf("\nrandomReplace: can not obtain output format, %v", err)
-	}
-
-	err = RunParallel(np.Parallelism, np.StartDelay, "randomReplace", func(id int64) error {
+	err := RunParallel(np.Parallelism, np.StartDelay, "randomReplace", func(id int64) error {
 		// Let's use our own private client and connection here:
 		cl, err := config.MakeClient()
 		if err != nil {
@@ -741,16 +736,14 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 
 		coll, err := db.Collection(nil, np.Collection)
 		if err != nil {
-			config.OutputMutex.Lock()
-			fmt.Printf("randomReplace: could not open `%s` collection: %v\n", np.Collection, err)
-			config.OutputMutex.Unlock()
+			PrintTS(fmt.Sprintf("randomReplace: could not open `%s` collection: %v\n", np.Collection, err))
 			return err
 		}
 
 		ctx := context.Background()
 		colSize, err := coll.Count(ctx)
 		if err != nil {
-			fmt.Printf("randomReplace: could not count num of docs for `%s` collection: %v\n", np.Collection, err)
+			PrintTS(fmt.Sprintf("randomReplace: could not count num of docs for `%s` collection: %v\n", np.Collection, err))
 			return err
 		}
 
@@ -787,7 +780,9 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 			start := time.Now()
 			_, errSlice, err := coll.ReplaceDocuments(ctx, keys, docs)
 			if err != nil {
-				//if there's a write/write conflict, we ignore it, but count for statistics, err is not supposed to return a write conflict, only the ErrorSlice, but doesn't hurt performance much to test it
+				// if there's a write/write conflict, we ignore it, but count for
+				// statistics, err is not supposed to return a write conflict, only
+				// the ErrorSlice, but doesn't hurt performance much to test it
 				if driver.IsPreconditionFailed(err) {
 					writeConflicts++
 				} else {
@@ -811,34 +806,29 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		}
 		totaltime := time.Now().Sub(cyclestart)
 		replacespersec := float64(np.LoadPerThread) * float64(batchSizeLimit) / (float64(totaltime) / float64(time.Second))
-		if isJSON {
-			// JSON format
-			err = WriteStatisticsForTimes(times,
-				fmt.Sprintf(`{"normal": "numDocsReplaced": %d, "docsReplacedPerSec": %f}}`, np.LoadPerThread*batchSizeLimit, replacespersec), true)
-		} else {
-			err = WriteStatisticsForTimes(times,
-				fmt.Sprintf("\nnormal: Times for replacing %d docs randomly.\n  docs per second in this go routine: %f", np.LoadPerThread*batchSizeLimit, replacespersec), false)
-		}
-		if err != nil {
-			return fmt.Errorf("\nrandomReplace: can not write statistics in JSON format, %v", err)
-		}
+		stats.TotalTime = totaltime
+		stats.NumberOps = np.LoadPerThread * batchSizeLimit
+		stats.OpsPerSecond = replacespersec
+		stats.FillInStats(times)
+		PrintStatistics(&stats, fmt.Sprintf("normal (replace):\n  Times for replacing %d batches.\n  docs per second in this go routine: %f", np.LoadPerThread, replacespersec))
+
+		// Report back:
+		np.Stats.Mutex.Lock()
+		np.Stats.Threads = append(np.Stats.Threads, stats)
+		np.Stats.Mutex.Unlock()
 		stats.NumReplaceWriteConflicts += writeConflicts
 		return nil
 	}, func(totaltime time.Duration, haveError bool) error {
-		replacespersec := float64(np.Parallelism*np.LoadPerThread*np.BatchSize) / (float64(totaltime) / float64(time.Second))
-		var msg string
-		if isJSON {
-			msg = fmt.Sprintf(`{"normal": {"totalNumReplaces": %d, "totalReplacesPerSec": %f, "totalWriteConflicts": %d, "hadErrors": %v}}`, np.Parallelism*np.LoadPerThread*np.BatchSize, replacespersec, writeConflictStats.numReplaceWriteConflicts, haveError)
-			msg, err = PrettyPrintToJSON(msg)
-			if err != nil {
-				return fmt.Errorf("can not write statistics in JSON format: %v", err)
-			}
-		} else {
-			msg = fmt.Sprintf("\nnormal: Total number of replaces: %d,\n total replaces per second: %f,\n total write conflicts: %d, \n had errors: %v \n\n", np.Parallelism*np.LoadPerThread*np.BatchSize, replacespersec, writeConflictStats.numReplaceWriteConflicts, haveError)
-		}
-		config.OutputMutex.Lock()
-		fmt.Printf(msg)
-		config.OutputMutex.Unlock()
+		// Here, we aggregate the data from all threads and report for the
+		// whole command:
+		np.Stats.Overall = AggregateStats(np.Stats.Threads, totaltime)
+		np.Stats.Overall.TotalTime = totaltime
+		np.Stats.Overall.HaveError = haveError
+		batchesPerSec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+		replacespersec := batchesPerSec * float64(np.BatchSize)
+		msg := fmt.Sprintf("normal (replace):\n  Total number of documents replaced: %d,\n  total batches per second: %f,\n  total docs per second: %f,\n  with errors: %v", np.Parallelism*np.LoadPerThread*np.BatchSize, batchesPerSec, replacespersec, haveError)
+		statsmsg := np.Stats.Overall.StatsToStrings()
+		PrintTSs(msg, statsmsg)
 		return nil
 	},
 	)
@@ -1089,9 +1079,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 
 		edges, err := db.Collection(nil, np.Collection)
 		if err != nil {
-			config.OutputMutex.Lock()
-			fmt.Printf("writeSomeBatches: could not open `%s` collection: %v\n", np.Collection, err)
-			config.OutputMutex.Unlock()
+			PrintTS(fmt.Sprintf("writeSomeBatches: could not open `%s` collection: %v\n", np.Collection, err))
 			return err
 		}
 

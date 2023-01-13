@@ -169,13 +169,13 @@ type WaitProg struct {
 func (dp *WaitProg) Execute() error {
 	dp.StartTime = time.Now()
 	config.OutputMutex.Lock()
-	fmt.Printf("Wait: I am working %d\n", dp.i)
+	fmt.Printf("%v: wait: I am working %d (line %d of script)\n", time.Now(), dp.i, dp.StartLine)
 	config.OutputMutex.Unlock()
 
 	time.Sleep(time.Second * time.Duration(dp.i))
 
 	config.OutputMutex.Lock()
-	fmt.Printf("Wait: I am done %d\n", dp.i)
+	fmt.Printf("%v: wait: I am done %d (line %d of script)\n", time.Now(), dp.i, dp.StartLine)
 	config.OutputMutex.Unlock()
 	dp.EndTime = time.Now()
 	dp.RunTime = dp.EndTime.Sub(dp.StartTime)

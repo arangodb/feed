@@ -129,11 +129,6 @@ func (gp *GraphProg) Create() error {
 }
 
 func (gp *GraphProg) Insert(what string) error {
-	isJSON, err := ValidateOutFormat(gp.OutFormat)
-	if err != nil {
-		return fmt.Errorf("\ngraph: can not obtain output format, %v", err)
-	}
-
 	// Derive and check some arguments:
 	if gp.DocConfig.KeySize < 1 || gp.DocConfig.KeySize > 64 {
 		gp.DocConfig.KeySize = 64
@@ -189,12 +184,10 @@ func (gp *GraphProg) Insert(what string) error {
 	}
 	gp.DocConfig.SizePerDoc = gp.DocConfig.Size / numberDocs
 
-	config.OutputMutex.Lock()
-	fmt.Printf("\ngraph (%s): Will write %d batches of %d docs across %d goroutines...\n\n",
-		what, numberBatches, gp.BatchSize, gp.Parallelism)
-	config.OutputMutex.Unlock()
+	PrintTS(fmt.Sprintf("\ngraph (%s): Will write %d batches of %d docs across %d goroutines...\n\n",
+		what, numberBatches, gp.BatchSize, gp.Parallelism))
 
-	err = RunParallel(gp.Parallelism, gp.StartDelay, "graph",
+	err := RunParallel(gp.Parallelism, gp.StartDelay, "graph",
 		func(id int64) error {
 			// Let's use our own private client and connection here:
 			cl, err := config.MakeClient()
@@ -213,9 +206,7 @@ func (gp *GraphProg) Insert(what string) error {
 				coll, err = db.Collection(nil, gp.EdgeCollName)
 			}
 			if err != nil {
-				config.OutputMutex.Lock()
-				fmt.Printf("graph write %s: could not open `%s` collection: %v\n", what, coll.Name(), err)
-				config.OutputMutex.Unlock()
+				PrintTS(fmt.Sprintf("graph write %s: could not open `%s` collection: %v\n", what, coll.Name(), err))
 				return err
 			}
 
@@ -246,7 +237,7 @@ func (gp *GraphProg) Insert(what string) error {
 					_, _, err := coll.CreateDocuments(ctx, docs)
 					cancel()
 					if err != nil {
-						fmt.Printf("writeSomeBatches: could not write batch: %v\n", err)
+						PrintTS(fmt.Sprintf("writeSomeBatches: could not write batch: %v\n", err))
 						return err
 					}
 					nrDocs += int64(len(docs))
@@ -260,48 +251,41 @@ func (gp *GraphProg) Insert(what string) error {
 
 					// Intermediate report:
 					if config.Verbose {
-						config.OutputMutex.Lock()
-						fmt.Printf("graph: %s Have imported %d batches for id %d, last 100 took %f seconds.\n", time.Now(), int(i), id, dur)
-						config.OutputMutex.Unlock()
+						PrintTS(fmt.Sprintf("graph: %s Have imported %d batches for id %d, last 100 took %f seconds.\n", time.Now(), int(i), id, dur))
 					}
 				}
 			}
 
 			totaltime := time.Now().Sub(cyclestart)
 			docspersec := float64(nrDocs) / (float64(totaltime) / float64(time.Second))
+			stats := NormalStatsOneThread{
+				TotalTime:    totaltime,
+				NumberOps:    nrDocs,
+				OpsPerSecond: docspersec,
+			}
+			stats.FillInStats(times)
+			PrintStatistics(&stats, fmt.Sprintf("graph (insert):\n  Times for inserting %d batches.\n  docs per second in this go routine: %f", numberBatches, docspersec))
 
-			if isJSON {
-				err = WriteStatisticsForTimes(times,
-					fmt.Sprintf("{graph: {numBatches: %d,  docsPerSec: %f}}", i, docspersec), isJSON)
-			} else {
-				err = WriteStatisticsForTimes(times,
-					fmt.Sprintf("\ngraph: Times for inserting %d batches.\n  docs per second in this go routine: %f", i, docspersec), isJSON)
-			}
-			if err != nil {
-				return fmt.Errorf("\ngraph: can not write statistics in JSON format %v", err)
-			}
+			// Report back:
+			gp.Stats.Mutex.Lock()
+			gp.Stats.Threads = append(gp.Stats.Threads, stats)
+			gp.Stats.Mutex.Unlock()
+
 			return nil
 		},
 		func(totaltime time.Duration, haveError bool) error {
+			// Here, we aggregate the data from all threads and report for the
+			// whole command:
+			gp.Stats.Overall = AggregateStats(gp.Stats.Threads, totaltime)
+			gp.Stats.Overall.TotalTime = totaltime
+			gp.Stats.Overall.HaveError = haveError
 			batchesPerSec := float64(numberBatches) / (float64(totaltime) / float64(time.Second))
 			docspersec := float64(numberDocs) / (float64(totaltime) / float64(time.Second))
-			var msg string
-			if isJSON {
-				msg = fmt.Sprintf("graph: {totalDocsWritten: %d, totalTime: %v, totalBatchesPerSec: %f, totalDocsPerSec: %f, hadErrors: %v}}",
-					numberDocs, totaltime, batchesPerSec, docspersec,
-					haveError)
-				msg, err = PrettyPrintToJSON(msg)
-				if err != nil {
-					return fmt.Errorf("can not write statistics in JSON format: %v", err)
-				}
-			} else {
-				msg = fmt.Sprintf("\ngraph: Total number of documents written: %d,\n  total time: %v,\n  total batches per second: %f,\n  total docs per second: %f\n  had errors: %v\n\n",
-					numberDocs, totaltime, batchesPerSec, docspersec,
-					haveError)
-			}
-			config.OutputMutex.Lock()
-			fmt.Printf(msg)
-			config.OutputMutex.Unlock()
+
+			msg := fmt.Sprintf("graph (insert):\n  Total number of documents written: %d,\n  total batches per second: %f,\n  total docs per second: %f,\n  with errors: %v", numberDocs, batchesPerSec, docspersec, haveError)
+			statsmsg := gp.Stats.Overall.StatsToStrings()
+			PrintTSs(msg, statsmsg)
+
 			return nil
 		},
 	)

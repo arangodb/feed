@@ -111,9 +111,6 @@ type NormalProg struct {
 	// Parameter for index creation or query on index
 	IdxName string
 
-	// Parameter for statistics (possibly other outputs) format
-	OutFormat string
-
 	// Statistics:
 	Stats NormalStats
 }
@@ -188,19 +185,6 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 		LoadPerThread: GetInt64Value(m, "loadPerThread", 50),
 		QueryLimit:    GetInt64Value(m, "queryLimit", 1),
 		IdxName:       GetStringValue(m, "idxName", ""),
-		OutFormat:     GetStringValue(m, "outFormat", ""),
-	}
-}
-
-func ValidateOutFormat(outFormat string) (bool, error) {
-	if strings.HasPrefix(outFormat, "\"") {
-		outFormat = outFormat[1 : len(outFormat)-1]
-	}
-	outFormat = strings.ToLower(outFormat)
-	if len(outFormat) != 0 && outFormat != "json" {
-		return false, fmt.Errorf("output format should be either empty string or JSON")
-	} else {
-		return (outFormat == "json"), nil
 	}
 }
 
@@ -220,6 +204,7 @@ func NewNormalProg(args []string, line int) (feedlang.Program, error) {
 }
 
 func (np *NormalProg) Create(cl driver.Client) error {
+	start := time.Now()
 	db, err := database.CreateOrGetDatabase(nil, cl, np.Database,
 		&driver.CreateDatabaseOptions{})
 	if err != nil {
@@ -247,12 +232,19 @@ func (np *NormalProg) Create(cl driver.Client) error {
 	if err != nil {
 		return fmt.Errorf("Error: could not create collection %s: %v", np.Collection, err)
 	}
-	fmt.Printf("normal: Database %s and collection %s successfully created.\n", np.Database, np.Collection)
+	PrintTS(fmt.Sprintf("normal: Database %s and collection %s successfully created.\n", np.Database, np.Collection))
 	metrics.CollectionsCreated.Inc()
+	totaltime := time.Now().Sub(start)
+
+	// Report back:
+	np.Stats.Mutex.Lock()
+	np.Stats.Overall = SingleStats(totaltime, float64(time.Second)/float64(totaltime))
+	np.Stats.Mutex.Unlock()
 	return nil
 }
 
 func (np *NormalProg) DoDrop(cl driver.Client) error {
+	start := time.Now()
 	db, err := database.CreateOrGetDatabase(nil, cl, np.Database,
 		&driver.CreateDatabaseOptions{})
 	if err != nil {
@@ -268,12 +260,20 @@ func (np *NormalProg) DoDrop(cl driver.Client) error {
 		return fmt.Errorf("Error: could not look for collection %s: %v\n", np.Collection, err)
 	}
 
-	fmt.Printf("normal: Database %s found and collection %s successfully dropped.\n", np.Database, np.Collection)
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: Database %s found and collection %s successfully dropped (line %d of script).\n", np.Database, np.Collection, np.Stats.StartLine))
 	metrics.CollectionsDropped.Inc()
+	totaltime := time.Now().Sub(start)
+
+	// Report back:
+	np.Stats.Mutex.Lock()
+	np.Stats.Overall = SingleStats(totaltime, float64(time.Second)/float64(totaltime))
+	np.Stats.Mutex.Unlock()
 	return nil
 }
 
 func (np *NormalProg) DropDatabase(cl driver.Client) error {
+	start := time.Now()
 	if np.Database == "_system" {
 		return fmt.Errorf("Cannot drop _system database.")
 	}
@@ -286,14 +286,20 @@ func (np *NormalProg) DropDatabase(cl driver.Client) error {
 		return fmt.Errorf("Could not drop database %s: %v\n", np.Database, err)
 	}
 
-	config.OutputMutex.Lock()
-	fmt.Printf("normal: Database %s dropped successfully.\n", np.Database)
-	config.OutputMutex.Unlock()
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: Database %s dropped successfully (line %d of script).\n", np.Database, np.Stats.StartLine))
 	metrics.DatabasesDropped.Inc()
+	totaltime := time.Now().Sub(start)
+
+	// Report back:
+	np.Stats.Mutex.Lock()
+	np.Stats.Overall = SingleStats(totaltime, float64(time.Second)/float64(totaltime))
+	np.Stats.Mutex.Unlock()
 	return nil
 }
 
 func (np *NormalProg) Truncate(cl driver.Client) error {
+	start := time.Now()
 	db, err := database.CreateOrGetDatabase(nil, cl, np.Database,
 		&driver.CreateDatabaseOptions{})
 	if err != nil {
@@ -309,8 +315,15 @@ func (np *NormalProg) Truncate(cl driver.Client) error {
 		return fmt.Errorf("Error: could not look for collection %s: %v\n", np.Collection, err)
 	}
 
-	fmt.Printf("normal: Database %s found and collection %s successfully truncated.\n", np.Database, np.Collection)
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: Database %s found and collection %s successfully truncated (line %d of script).\n", np.Database, np.Collection, np.Stats.StartLine))
 	metrics.CollectionsTruncated.Inc()
+	totaltime := time.Now().Sub(start)
+
+	// Report back:
+	np.Stats.Mutex.Lock()
+	np.Stats.Overall = SingleStats(totaltime, float64(time.Second)/float64(totaltime))
+	np.Stats.Mutex.Unlock()
 	return nil
 }
 
@@ -323,7 +336,7 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 	number := (np.DocConfig.Size / np.DocConfig.SizePerDoc) / np.BatchSize
 
 	Print("\n")
-	PrintTS(fmt.Sprintf("normal: Will write %d batches of %d docs across %d goroutines...\n", number, np.BatchSize, np.Parallelism))
+	PrintTS(fmt.Sprintf("normal: Will write %d batches of %d docs across %d goroutines... (line %d of script)\n", number, np.BatchSize, np.Parallelism, np.Stats.StartLine))
 
 	if err := writeSomeBatchesParallel(np, number); err != nil {
 		return fmt.Errorf("can not do some batch imports")
@@ -333,9 +346,8 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 }
 
 func (np *NormalProg) RunQueryOnIdx(cl driver.Client) error {
-	config.OutputMutex.Lock()
-	fmt.Printf("\nnormal: Will perform query on idx.\n\n")
-	config.OutputMutex.Unlock()
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: Will perform query on idx.\n\n"))
 
 	if err := runQueryOnIdxInParallel(np); err != nil {
 		return fmt.Errorf("can not run query on idx")
@@ -345,9 +357,8 @@ func (np *NormalProg) RunQueryOnIdx(cl driver.Client) error {
 }
 
 func (np *NormalProg) CreateIdx(cl driver.Client) error {
-	config.OutputMutex.Lock()
-	fmt.Printf("\nnormal: Will perform index creation.\n\n")
-	config.OutputMutex.Unlock()
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: Will perform index creation.\n\n"))
 
 	if err := createIdx(np); err != nil {
 		return fmt.Errorf("can not create index")
@@ -358,9 +369,8 @@ func (np *NormalProg) CreateIdx(cl driver.Client) error {
 }
 
 func (np *NormalProg) DropIdx(cl driver.Client) error {
-	config.OutputMutex.Lock()
-	fmt.Printf("\nnormal: Will perform index drop.\n\n")
-	config.OutputMutex.Unlock()
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: Will perform index drop.\n\n"))
 
 	if err := dropIdx(np); err != nil {
 		return fmt.Errorf("can not create drop")
@@ -371,9 +381,8 @@ func (np *NormalProg) DropIdx(cl driver.Client) error {
 }
 
 func (np *NormalProg) RandomReplace(cl driver.Client) error {
-	config.OutputMutex.Lock()
-	fmt.Printf("\nnormal: Will perform random replaces.\n\n")
-	config.OutputMutex.Unlock()
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: Will perform random replaces.\n\n"))
 
 	if err := replaceRandomlyInParallel(np); err != nil {
 		return fmt.Errorf("can not replace randomly")
@@ -383,9 +392,8 @@ func (np *NormalProg) RandomReplace(cl driver.Client) error {
 }
 
 func (np *NormalProg) RandomUpdate(cl driver.Client) error {
-	config.OutputMutex.Lock()
-	fmt.Printf("\nnormal: Will perform random updates.\n\n")
-	config.OutputMutex.Unlock()
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: Will perform random updates.\n\n"))
 
 	if err := updateRandomlyInParallel(np); err != nil {
 		return fmt.Errorf("can not update randomly")
@@ -395,9 +403,8 @@ func (np *NormalProg) RandomUpdate(cl driver.Client) error {
 }
 
 func (np *NormalProg) RandomRead(cl driver.Client) error {
-	config.OutputMutex.Lock()
-	fmt.Printf("\nnormal: Will perform random reads.\n\n")
-	config.OutputMutex.Unlock()
+	Print("\n")
+	PrintTS(fmt.Sprintf("\nnormal: Will perform random reads.\n\n"))
 
 	if err := readRandomlyInParallel(np); err != nil {
 		return fmt.Errorf("can not read randomly")
@@ -407,11 +414,7 @@ func (np *NormalProg) RandomRead(cl driver.Client) error {
 }
 
 func runQueryOnIdxInParallel(np *NormalProg) error {
-	isJSON, err := ValidateOutFormat(np.OutFormat)
-	if err != nil {
-		return fmt.Errorf("\nqueryOnIdx: can not obtain output format, %v", err)
-	}
-	err = RunParallel(np.Parallelism, np.StartDelay, "queryOnIdx", func(id int64) error {
+	err := RunParallel(np.Parallelism, np.StartDelay, "queryOnIdx", func(id int64) error {
 		// Let's use our own private client and connection here:
 		cl, err := config.MakeClient()
 		if err != nil {
@@ -424,9 +427,7 @@ func runQueryOnIdxInParallel(np *NormalProg) error {
 
 		coll, err := db.Collection(nil, np.Collection)
 		if err != nil {
-			config.OutputMutex.Lock()
-			fmt.Printf("queryOnIdx: could not open `%s` collection: %v\n", np.Collection, err)
-			config.OutputMutex.Unlock()
+			PrintTS(fmt.Sprintf("queryOnIdx: could not open `%s` collection: %v\n", np.Collection, err))
 			return err
 		}
 
@@ -459,8 +460,8 @@ func runQueryOnIdxInParallel(np *NormalProg) error {
 		times := make([]time.Duration, 0, np.LoadPerThread)
 		cyclestart := time.Now()
 
-		// It is crucial that every go routine has its own random source, otherwise
-		// we create a lot of contention.
+		// It is crucial that every go routine has its own random source,
+		// otherwise we create a lot of contention.
 		source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
 
 		for i := int64(1); i <= np.LoadPerThread; i++ {
@@ -480,35 +481,29 @@ func runQueryOnIdxInParallel(np *NormalProg) error {
 		}
 		totaltime := time.Now().Sub(cyclestart)
 		queriesonidxpersec := float64(np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+		stats := NormalStatsOneThread{}
+		stats.TotalTime = totaltime
+		stats.NumberOps = np.LoadPerThread
+		stats.OpsPerSecond = queriesonidxpersec
+		stats.FillInStats(times)
+		PrintStatistics(&stats, fmt.Sprintf("normal (queryOnIdx):\n  Times for reading %d documents.\n  queries per second in this go routine: %f", np.LoadPerThread*np.QueryLimit, queriesonidxpersec))
 
-		if isJSON {
-			// JSON format
-			err = WriteStatisticsForTimes(times,
-				fmt.Sprintf(`{"normal": {"numQueriesRun": %d, "queriesRunPerSec": %f}}`, np.LoadPerThread, queriesonidxpersec), true)
-		} else {
-			err = WriteStatisticsForTimes(times,
-				fmt.Sprintf("\nnormal: Times for running %d queries on indexes.\n  queries per second in this go routine: %f\n\n", np.LoadPerThread, queriesonidxpersec), false)
-		}
-		if err != nil {
-			return fmt.Errorf("\nqueryOnIdx: can not write statistics in JSON format, %v", err)
-		}
+		// Report back:
+		np.Stats.Mutex.Lock()
+		np.Stats.Threads = append(np.Stats.Threads, stats)
+		np.Stats.Mutex.Unlock()
 		return nil
 	},
 		func(totaltime time.Duration, haveError bool) error {
+			// Here, we aggregate the data from all threads and report for the
+			// whole command:
+			np.Stats.Overall = AggregateStats(np.Stats.Threads, totaltime)
+			np.Stats.Overall.TotalTime = totaltime
+			np.Stats.Overall.HaveError = haveError
 			idxqueriespersec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
-			var msg string
-			if isJSON {
-				msg = fmt.Sprintf(`{"normal": {"totalNumQueryOnIdxExecs": %d, "totalQueriesPerSec": %f, "hadErrors": %v}}`, np.Parallelism*np.LoadPerThread, idxqueriespersec, haveError)
-				msg, err = PrettyPrintToJSON(msg)
-				if err != nil {
-					return fmt.Errorf("can not write statistics in JSON format: %v", err)
-				}
-			} else {
-				msg = fmt.Sprintf("\nnormal: Total number of query on index executions: %d,\n total queries per second: %f, \n hadErrors: %v\n\n", np.Parallelism*np.LoadPerThread, idxqueriespersec, haveError)
-			}
-			config.OutputMutex.Lock()
-			fmt.Printf(msg)
-			config.OutputMutex.Unlock()
+			msg := fmt.Sprintf("normal (queryOnIdx):\n  Total number of documents read: %d,\n  total queries per second: %f,\n  with errors: %v", np.Parallelism*np.LoadPerThread*np.QueryLimit, idxqueriespersec, haveError)
+			statsmsg := np.Stats.Overall.StatsToStrings()
+			PrintTSs(msg, statsmsg)
 			return nil
 		},
 	)
@@ -519,10 +514,6 @@ func runQueryOnIdxInParallel(np *NormalProg) error {
 }
 
 func createIdx(np *NormalProg) error {
-	isJSON, err := ValidateOutFormat(np.OutFormat)
-	if err != nil {
-		return fmt.Errorf("\nidxCreation: can not obtain output format, %v", err)
-	}
 	totaltimestart := time.Now()
 	haveError := false
 	if config.Verbose {
@@ -540,9 +531,7 @@ func createIdx(np *NormalProg) error {
 
 	coll, err := db.Collection(nil, np.Collection)
 	if err != nil {
-		config.OutputMutex.Lock()
-		fmt.Printf("idxCreation: could not open `%s` collection: %v\n", np.Collection, err)
-		config.OutputMutex.Unlock()
+		PrintTS(fmt.Sprintf("idxCreation: could not open `%s` collection: %v\n", np.Collection, err))
 		return err
 	}
 
@@ -560,17 +549,6 @@ func createIdx(np *NormalProg) error {
 	for i := int64(1); i <= np.DocConfig.NumberFields; i++ {
 		idxFields = append(idxFields, "payload"+fmt.Sprintf("%x", i))
 	}
-	/*
-		not shuffle fields for now
-
-		rand.Seed(time.Now().UnixNano())
-		rand.Shuffle(len(idxFields), func(i, j int) { idxFields[i], idxFields[j] = idxFields[j], idxFields[i] })
-
-		not use this attribute for now
-			if np.DocConfig.WithWords > 0 {
-				idxFields = append(idxFields, "Words")
-			}
-	*/
 
 	var idxName string
 	if strings.HasPrefix(np.IdxName, "\"") {
@@ -599,38 +577,26 @@ func createIdx(np *NormalProg) error {
 	}
 
 	if config.Verbose {
-		config.OutputMutex.Lock()
-		fmt.Printf("normal: idxCreation done\n")
-		config.OutputMutex.Unlock()
+		PrintTS(fmt.Sprintf("normal: idxCreation done\n"))
 	}
 
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
 	idxspersec := 1 / (float64(totaltime) / float64(time.Second))
-	if isJSON {
-		// JSON format
-		msg := fmt.Sprintf(`{"normal": {"totalTime": %v, "totalIdxsPerSecond": %f, "hadErrors": %v}}`, totaltimeend.Sub(totaltimestart), idxspersec, haveError)
-		msg, err = PrettyPrintToJSON(msg)
-		if err != nil {
-			return fmt.Errorf("\nidxCreation: can not write statistics in JSON format, %v", err)
-		}
-		fmt.Printf(msg)
-	} else {
-		fmt.Printf("\nnormal: total time: %v,\n total idxs per second: %f \n\n", totaltimeend.Sub(totaltimestart), idxspersec)
-	}
+
+	// Report back:
+	np.Stats.Mutex.Lock()
+	np.Stats.Overall = SingleStats(totaltime, idxspersec)
+	np.Stats.Mutex.Unlock()
 
 	if !haveError {
 		return nil
 	}
-	fmt.Printf("Error in idxCreation %v \n", err)
+	PrintTS(fmt.Sprintf("Error in idxCreation %v \n", err))
 	return fmt.Errorf("Error in idxCreation.")
 }
 
 func dropIdx(np *NormalProg) error {
-	isJSON, err := ValidateOutFormat(np.OutFormat)
-	if err != nil {
-		return fmt.Errorf("\nidxDrop: can not obtain output format, %v", err)
-	}
 	totaltimestart := time.Now()
 	haveError := false
 	if config.Verbose {
@@ -648,9 +614,7 @@ func dropIdx(np *NormalProg) error {
 
 	coll, err := db.Collection(nil, np.Collection)
 	if err != nil {
-		config.OutputMutex.Lock()
-		fmt.Printf("idxDrop: could not open `%s` collection: %v\n", np.Collection, err)
-		config.OutputMutex.Unlock()
+		PrintTS(fmt.Sprintf("idxDrop: could not open `%s` collection: %v\n", np.Collection, err))
 		return err
 	}
 
@@ -661,17 +625,15 @@ func dropIdx(np *NormalProg) error {
 	if len(np.IdxName) > 0 {
 		idxName = np.IdxName
 	} else {
-		config.OutputMutex.Lock()
-		fmt.Printf("idxDrop: no index name given to drop in collection %s: %v\n",
-			np.Collection, err)
-		config.OutputMutex.Unlock()
+		PrintTS(fmt.Sprintf("idxDrop: no index name given to drop in collection %s: %v\n",
+			np.Collection, err))
 		return fmt.Errorf("idxDrop: no index name given")
 	}
 
 	ctx := context.Background()
 	indexes, err := coll.Indexes(ctx)
 	if err != nil {
-		fmt.Printf("idxDrop: cannot list indexes of collection %s: %v\n", np.Collection, err)
+		PrintTS(fmt.Sprintf("idxDrop: cannot list indexes of collection %s: %v\n", np.Collection, err))
 		haveError = true
 	} else {
 		found := false
@@ -687,38 +649,30 @@ func dropIdx(np *NormalProg) error {
 		}
 		if !found {
 			haveError = true
-			fmt.Printf("idxDrop: Did not find index with name %s in collection %s in database %s",
-				idxName, np.Collection, np.Database)
+			PrintTS(fmt.Sprintf("idxDrop: Did not find index with name %s in collection %s in database %s",
+				idxName, np.Collection, np.Database))
 			err = fmt.Errorf("Did not find index with name %s in collection %s in database %s",
 				idxName, np.Collection, np.Database)
 		}
 	}
 
 	if config.Verbose && !haveError {
-		config.OutputMutex.Lock()
-		fmt.Printf("normal: idxDrop done\n")
-		config.OutputMutex.Unlock()
+		PrintTS(fmt.Sprintf("normal: idxDrop done\n"))
 	}
 
 	totaltimeend := time.Now()
 	totaltime := totaltimeend.Sub(totaltimestart)
 	idxspersec := 1 / (float64(totaltime) / float64(time.Second))
-	if isJSON {
-		// JSON format
-		msg := fmt.Sprintf(`{"normal": {"totalTime": %v, "totalIdxsPerSecond": %f, "hadErrors": %v}}`, totaltimeend.Sub(totaltimestart), idxspersec, haveError)
-		msg, err = PrettyPrintToJSON(msg)
-		if err != nil {
-			return fmt.Errorf("\nidxDrop: can not write statistics in JSON format, %v", err)
-		}
-		fmt.Printf(msg)
-	} else {
-		fmt.Printf("\nnormal: total time: %v,\n total idxs per second: %f \n\n", totaltimeend.Sub(totaltimestart), idxspersec)
-	}
+
+	// Report back:
+	np.Stats.Mutex.Lock()
+	np.Stats.Overall = SingleStats(totaltime, idxspersec)
+	np.Stats.Mutex.Unlock()
 
 	if !haveError {
 		return nil
 	}
-	fmt.Printf("Error in idxCreation %v \n", err)
+	PrintTS(fmt.Sprintf("Error in idxCreation %v \n", err))
 	return fmt.Errorf("Error in idxCreation.")
 }
 
@@ -810,7 +764,7 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		stats.NumberOps = np.LoadPerThread * batchSizeLimit
 		stats.OpsPerSecond = replacespersec
 		stats.FillInStats(times)
-		PrintStatistics(&stats, fmt.Sprintf("normal (replace):\n  Times for replacing %d batches.\n  docs per second in this go routine: %f", np.LoadPerThread, replacespersec))
+		PrintStatistics(&stats, fmt.Sprintf("normal (replace):\n  Times for replacing %d batches (line %d of script).\n  docs per second in this go routine: %f", np.Stats.StartLine, np.LoadPerThread, replacespersec))
 
 		// Report back:
 		np.Stats.Mutex.Lock()
@@ -826,7 +780,7 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		np.Stats.Overall.HaveError = haveError
 		batchesPerSec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
 		replacespersec := batchesPerSec * float64(np.BatchSize)
-		msg := fmt.Sprintf("normal (replace):\n  Total number of documents replaced: %d,\n  total batches per second: %f,\n  total docs per second: %f,\n  with errors: %v", np.Parallelism*np.LoadPerThread*np.BatchSize, batchesPerSec, replacespersec, haveError)
+		msg := fmt.Sprintf("normal (replace):\n  Total number of documents replaced: %d (line %d of script),\n  total batches per second: %f,\n  total docs per second: %f,\n  with errors: %v", np.Parallelism*np.LoadPerThread*np.BatchSize, np.Stats.StartLine, batchesPerSec, replacespersec, haveError)
 		statsmsg := np.Stats.Overall.StatsToStrings()
 		PrintTSs(msg, statsmsg)
 		return nil
@@ -839,13 +793,7 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 }
 
 func updateRandomlyInParallel(np *NormalProg) error {
-	isJSON, err := ValidateOutFormat(np.OutFormat)
-	if err != nil {
-		return fmt.Errorf("\nrandomUpdate: can not obtain output format, %v", err)
-	}
-	var mtx sync.Mutex
-
-	err = RunParallel(np.Parallelism, np.StartDelay, "randomUpdate", func(id int64) error {
+	err := RunParallel(np.Parallelism, np.StartDelay, "randomUpdate", func(id int64) error {
 		// Let's use our own private client and connection here:
 		cl, err := config.MakeClient()
 		if err != nil {
@@ -858,16 +806,14 @@ func updateRandomlyInParallel(np *NormalProg) error {
 
 		coll, err := db.Collection(nil, np.Collection)
 		if err != nil {
-			config.OutputMutex.Lock()
-			fmt.Printf("randomUpdate: could not open `%s` collection: %v\n", np.Collection, err)
-			config.OutputMutex.Unlock()
+			PrintTS(fmt.Sprintf("randomUpdate: could not open `%s` collection: %v\n", np.Collection, err))
 			return err
 		}
 
 		ctx := context.Background()
 		colSize, err := coll.Count(ctx)
 		if err != nil {
-			fmt.Printf("randomUpdate: could not count num of docs for `%s` collection: %v\n", np.Collection, err)
+			PrintTS(fmt.Sprintf("randomUpdate: could not count num of docs for `%s` collection: %v\n", np.Collection, err))
 			return err
 		}
 
@@ -927,42 +873,33 @@ func updateRandomlyInParallel(np *NormalProg) error {
 		}
 		totaltime := time.Now().Sub(cyclestart)
 		updatespersec := float64(np.LoadPerThread) * float64(batchSizeLimit) / (float64(totaltime) / float64(time.Second))
+		stats.TotalTime = totaltime
+		stats.NumberOps = np.LoadPerThread * batchSizeLimit
+		stats.OpsPerSecond = updatespersec
+		stats.FillInStats(times)
+		PrintStatistics(&stats, fmt.Sprintf("normal (update):\n  Times for updating %d batches (line %d of script).\n  docs per second in this go routine: %f", np.LoadPerThread, np.Stats.StartLine, updatespersec))
 
-		if isJSON {
-			// JSON format
-			err = WriteStatisticsForTimes(times,
-				fmt.Sprintf(`{"normal": {"numDocsUpdated": %d, "docsUpdatedPerSec": %f}}`, np.LoadPerThread*batchSizeLimit, updatespersec), true)
-		} else {
-			err = WriteStatisticsForTimes(times,
-				fmt.Sprintf("\nnormal: Times for updating %d docs randomly.\n  docs per second in this go routine: %f", np.LoadPerThread*batchSizeLimit, updatespersec), false)
-		}
-		if err != nil {
-			return fmt.Errorf("\nrandomUpdate: can not write statistics in JSON format, %v", err)
-		}
-		mtx.Lock()
-		writeConflictStats.numReplaceWriteConflicts += writeConflicts
-		mtx.Unlock()
+		// Report back:
+		np.Stats.Mutex.Lock()
+		np.Stats.Threads = append(np.Stats.Threads, stats)
+		np.Stats.Mutex.Unlock()
+		stats.NumReplaceWriteConflicts += writeConflicts
 		return nil
 	},
 
 		func(totaltime time.Duration, haveError bool) error {
-			updatespersec := float64(np.Parallelism*np.LoadPerThread*np.BatchSize) / (float64(totaltime) / float64(time.Second))
-			var msg string
-			if isJSON {
-				msg = fmt.Sprintf(`{"normal": {"totalNumUpdates": %d, "totalUpdatesPerSec": %f, "totalWriteConflicts": %d, "hadErrors": %v}}`, np.Parallelism*np.LoadPerThread*np.BatchSize, updatespersec, writeConflictStats.numUpdateWriteConflicts, haveError)
-				msg, err = PrettyPrintToJSON(msg)
-				if err != nil {
-					return fmt.Errorf("can not write statistics in JSON format: %v", err)
-				}
-			} else {
-				msg = fmt.Sprintf("\nnormal: Total number of updates: %d,\n total updates per second: %f,\n total write conflicts: %d,\n hadErrors: %v \n\n", np.Parallelism*np.LoadPerThread*np.BatchSize, updatespersec, writeConflictStats.numUpdateWriteConflicts, haveError)
-			}
-			config.OutputMutex.Lock()
-			fmt.Printf(msg)
-			config.OutputMutex.Unlock()
+			// Here, we aggregate the data from all threads and report for the
+			// whole command:
+			np.Stats.Overall = AggregateStats(np.Stats.Threads, totaltime)
+			np.Stats.Overall.TotalTime = totaltime
+			np.Stats.Overall.HaveError = haveError
+			batchesPerSec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+			updatespersec := batchesPerSec * float64(np.BatchSize)
+			msg := fmt.Sprintf("normal (update):\n  Total number of documents updated: %d (line %d of script),\n  total batches per second: %f,\n  total docs per second: %f,\n  with errors: %v", np.Parallelism*np.LoadPerThread*np.BatchSize, np.Stats.StartLine, batchesPerSec, updatespersec, haveError)
+			statsmsg := np.Stats.Overall.StatsToStrings()
+			PrintTSs(msg, statsmsg)
 			return nil
-		},
-	)
+		})
 	if err != nil {
 		return fmt.Errorf("randomUpdate: can not update randomly in parallel: %v", err)
 	}
@@ -970,12 +907,7 @@ func updateRandomlyInParallel(np *NormalProg) error {
 }
 
 func readRandomlyInParallel(np *NormalProg) error {
-	isJSON, err := ValidateOutFormat(np.OutFormat)
-	if err != nil {
-		return fmt.Errorf("\nrandomRead: can not obtain output format, %v", err)
-	}
-
-	err = RunParallel(np.Parallelism, np.StartDelay, "randomRead", func(id int64) error {
+	err := RunParallel(np.Parallelism, np.StartDelay, "randomRead", func(id int64) error {
 		// Let's use our own private client and connection here:
 		cl, err := config.MakeClient()
 		if err != nil {
@@ -988,16 +920,14 @@ func readRandomlyInParallel(np *NormalProg) error {
 
 		coll, err := db.Collection(nil, np.Collection)
 		if err != nil {
-			config.OutputMutex.Lock()
-			fmt.Printf("randomRead: could not open `%s` collection: %v\n", np.Collection, err)
-			config.OutputMutex.Unlock()
+			PrintTS(fmt.Sprintf("randomRead: could not open `%s` collection: %v\n", np.Collection, err))
 			return err
 		}
 
 		ctx := context.Background()
 		colSize, err := coll.Count(ctx)
 		if err != nil {
-			fmt.Printf("randomRead: could not count num of docs for `%s` collection: %v\n", np.Collection, err)
+			PrintTS(fmt.Sprintf("randomRead: could not count num of docs for `%s` collection: %v\n", np.Collection, err))
 			return err
 		}
 
@@ -1025,34 +955,28 @@ func readRandomlyInParallel(np *NormalProg) error {
 		}
 		totaltime := time.Now().Sub(cyclestart)
 		readspersec := float64(np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+		stats := NormalStatsOneThread{}
+		stats.TotalTime = totaltime
+		stats.NumberOps = np.LoadPerThread
+		stats.OpsPerSecond = readspersec
+		stats.FillInStats(times)
+		PrintStatistics(&stats, fmt.Sprintf("normal (randomRead):\n  Times for reading %d documents (line %d of script).\n  docs per second in this go routine: %f", np.LoadPerThread, np.Stats.StartLine, readspersec))
 
-		if isJSON {
-			// JSON format
-			err = WriteStatisticsForTimes(times,
-				fmt.Sprintf(`{"normal": {"numDocsRead": %d, "docsReadPerSec": %f}}`, np.LoadPerThread, readspersec), true)
-		} else {
-			err = WriteStatisticsForTimes(times,
-				fmt.Sprintf("\nnormal: Times for reading %d docs randomly.\n  docs per second in this go routine: %f", np.LoadPerThread, readspersec), false)
-		}
-		if err != nil {
-			return fmt.Errorf("\nrandomRead: can not write statistics in JSON format, %v", err)
-		}
+		// Report back:
+		np.Stats.Mutex.Lock()
+		np.Stats.Threads = append(np.Stats.Threads, stats)
+		np.Stats.Mutex.Unlock()
 		return nil
 	}, func(totaltime time.Duration, haveError bool) error {
+		// Here, we aggregate the data from all threads and report for the
+		// whole command:
+		np.Stats.Overall = AggregateStats(np.Stats.Threads, totaltime)
+		np.Stats.Overall.TotalTime = totaltime
+		np.Stats.Overall.HaveError = haveError
 		readspersec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
-		var msg string
-		if isJSON {
-			msg = fmt.Sprintf(`{"normal": {"totalNumReads": %d, "totalReadsPerSec": %f, "hadErrors": %v}}`, np.Parallelism*np.LoadPerThread, readspersec, haveError)
-			msg, err = PrettyPrintToJSON(msg)
-			if err != nil {
-				return fmt.Errorf("can not write statistics in JSON format: %v", err)
-			}
-		} else {
-			msg = fmt.Sprintf("normal: Total number of reads: %d,\n total reads per second: %f, hadErrors: %v", np.Parallelism*np.LoadPerThread, readspersec, haveError)
-		}
-		config.OutputMutex.Lock()
-		fmt.Printf(msg)
-		config.OutputMutex.Unlock()
+		msg := fmt.Sprintf("normal (randomRead):\n  Total number of documents read: %d (line %d of script),\n  total docs per second: %f,\n  with errors: %v", np.Parallelism*np.LoadPerThread, np.Stats.StartLine, readspersec, haveError)
+		statsmsg := np.Stats.Overall.StatsToStrings()
+		PrintTSs(msg, statsmsg)
 		return nil
 	},
 	)
@@ -1131,7 +1055,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 			OpsPerSecond: docspersec,
 		}
 		stats.FillInStats(times)
-		PrintStatistics(&stats, fmt.Sprintf("normal (insert):\n  Times for inserting %d batches.\n  docs per second in this go routine: %f", nrBatches, docspersec))
+		PrintStatistics(&stats, fmt.Sprintf("normal (insert):\n  Times for inserting %d batches (line %d of script).\n  docs per second in this go routine: %f", nrBatches, np.Stats.StartLine, docspersec))
 
 		// Report back:
 		np.Stats.Mutex.Lock()

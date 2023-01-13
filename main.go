@@ -68,7 +68,7 @@ func mainExecute(cmd *cobra.Command, _ []string) error {
 
 	// Expose metrics:
 	if config.MetricsPort != 0 {
-		fmt.Printf("Exposing Prometheus metrics on port %d under /metrics...\n",
+		fmt.Printf("Exposing Prometheus metrics on port %d under /metrics...\n\n",
 			config.MetricsPort)
 		go func() {
 			http.Handle("/metrics", promhttp.Handler())

@@ -1,5 +1,3 @@
- - Better human readable output of results. 
- - Revamp JSON output to make it more readable/usable. Probably dump to file.
  - Finish Grafana dashboards, upload to repository.
  - Finish and polish documentation.
 

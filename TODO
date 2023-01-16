@@ -1,5 +1,7 @@
  - Finish Grafana dashboards, upload to repository.
- - Finish and polish documentation.
+
+ - Add a new graph type (random graph)
+ - Add graph traversal benchmark
 
  - Fix testing code for larger graphs (blocked channels).
  - Add histograms with execution times to metrics.

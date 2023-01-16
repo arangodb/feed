@@ -24,7 +24,6 @@ type GraphProg struct {
 	GraphDepth     int64
 	GraphBranching int64
 	GraphDirection string
-	OutFormat      string
 	feedlang.ProgMeta
 }
 
@@ -74,7 +73,6 @@ func NewGraphProg(args []string, line int) (feedlang.Program, error) {
 		GraphDepth:     GetInt64Value(m, "graphDepth", 10),
 		GraphBranching: GetInt64Value(m, "graphBranching", 2),
 		GraphDirection: GetStringValue(m, "graphDirection", "downwards"),
-		OutFormat:      GetStringValue(m, "outFormat", ""),
 		ProgMeta:       feedlang.ProgMeta{StartLine: line, EndLine: line},
 	}
 

@@ -1,0 +1,5 @@
+[
+graph create name=G vertexColl=V edgeColl=E numberOfShards:3 replicationFactor:2 drop=true
+graph insertVertices name=G type=collatz graphSize=1000 vertexColl=V size=1K parallelism=1 keySize=20
+graph insertEdges name=G type=collatz graphSize=1000 vertexColl=V edgeColl=E size=1K parallelism=1 keySize=20
+]

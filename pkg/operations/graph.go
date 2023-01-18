@@ -161,6 +161,14 @@ func (gp *GraphProg) Insert(what string) error {
 				EdgePrefix:         gp.VertexCollName + "/",
 				StartIndexVertices: 0,
 				StartIndexEdges:    0}}).MakeGraphGenerator(makeVertices, makeEdges)
+	case "collatz":
+		gg = &graphgen.CollatzParameters{
+			Size: uint64(gp.GraphSize),
+			GeneralParams: graphgen.GeneralParameters{
+				Prefix:             prefix,
+				EdgePrefix:         gp.VertexCollName + "/",
+				StartIndexVertices: 0,
+				StartIndexEdges:    0}}
 	default:
 		return fmt.Errorf("Unknown graph type: %s", gp.GraphType)
 	}

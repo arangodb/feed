@@ -9,6 +9,7 @@ import (
 type PathParameters struct {
 	Length        uint64 // number of edges
 	Directed      bool
+	KeySize       int64
 	GeneralParams GeneralParameters
 }
 
@@ -28,7 +29,7 @@ func (p *PathParameters) MakeGraphGenerator(
 			for i = 0; i <= p.Length; i += 1 { // one more vertices than Length
 				label := strconv.FormatUint(i, 10)
 				makeVertex(&p.GeneralParams.Prefix,
-					p.GeneralParams.StartIndexVertices+i, &label, V)
+					p.GeneralParams.StartIndexVertices+i, &label, p.KeySize, V)
 			}
 			close(V)
 		}()
@@ -49,13 +50,13 @@ func (p *PathParameters) MakeGraphGenerator(
 
 				makeEdge(&p.GeneralParams.Prefix, &p.GeneralParams.EdgePrefix,
 					edgeIndex, &edgeLabel, globalFromIndex, globalToIndex, &fromLabel,
-					&toLabel, E)
+					&toLabel, p.KeySize, E)
 				edgeIndex++
 				if !p.Directed {
 					edgeLabel = strconv.FormatUint(edgeIndex, 10)
 					makeEdge(&p.GeneralParams.Prefix, &p.GeneralParams.EdgePrefix,
 						edgeIndex, &edgeLabel, globalToIndex, globalFromIndex, &toLabel,
-						&fromLabel, E)
+						&fromLabel, p.KeySize, E)
 					edgeIndex++
 				}
 			}

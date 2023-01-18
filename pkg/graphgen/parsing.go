@@ -156,7 +156,7 @@ func parseJSONtoGraph(f map[string]any,
 			{
 				length := uint64(subtree.(map[string]interface{})["length"].(float64)) // unmarshalling can only give float, never int
 				directed := subtree.(map[string]interface{})["directed"].(bool)
-				var path Generatable = &PathParameters{length, directed,
+				var path Generatable = &PathParameters{length, directed, 64,
 					GeneralParameters{prefix, edgePrefix, numVertices, numEdges}}
 				return parseJSONtoGraphResult{&path,
 					numVertices + length + 1, numEdges + length, nil}
@@ -175,7 +175,7 @@ func parseJSONtoGraph(f map[string]any,
 					return errorResult(&err)
 				}
 				var tree Generatable = &CompleteNaryTreeParameters{
-					branchingDegree, depth, directionType,
+					branchingDegree, depth, directionType, 64,
 					GeneralParameters{prefix, edgePrefix, numVertices, numEdges}}
 				numTreeVertices := tree.(*CompleteNaryTreeParameters).NumVertices()
 				return parseJSONtoGraphResult{&tree,
@@ -187,7 +187,7 @@ func parseJSONtoGraph(f map[string]any,
 		case cycleString:
 			{
 				length := uint64(subtree.(map[string]interface{})["length"].(float64))
-				var cycle Generatable = &CycleGraphParameters{length,
+				var cycle Generatable = &CycleGraphParameters{length, 64,
 					GeneralParameters{prefix, edgePrefix, numVertices, numEdges}}
 				return parseJSONtoGraphResult{&cycle, numVertices + length, numEdges + length, nil}
 			}

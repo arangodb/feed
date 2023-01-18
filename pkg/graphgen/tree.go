@@ -31,6 +31,7 @@ type Tree struct {
 	BranchingDegree uint64
 	Depth           uint64
 	DirectionType   string
+	KeySize         int64
 	GeneralParams   GeneralParameters
 }
 
@@ -71,7 +72,7 @@ func (t *Tree) MakeGraphGenerator(
 			var i uint64
 			for i = 0; i < numVertices; i += 1 {
 				label := labelFromInt(i, t.BranchingDegree)
-				makeVertex(&t.GeneralParams.Prefix, vertexIndex, &label, V)
+				makeVertex(&t.GeneralParams.Prefix, vertexIndex, &label, t.KeySize, V)
 				vertexIndex += 1
 			}
 			close(V)
@@ -92,7 +93,7 @@ func (t *Tree) MakeGraphGenerator(
 					labelTo := labelFromInt(i*b+j, b)
 					addEdge(&t.DirectionType, &t.GeneralParams.Prefix,
 						&t.GeneralParams.EdgePrefix, &edgeIndex, &labelEdge,
-						vertexIndex, vertexIndex*b+j, &labelFrom, &labelTo, E)
+						vertexIndex, vertexIndex*b+j, &labelFrom, &labelTo, t.KeySize, E)
 					edgeIndex += 1
 				}
 				vertexIndex += 1
@@ -110,6 +111,7 @@ type CompleteNaryTreeParameters struct {
 	BranchingDegree uint64
 	Depth           uint64 // length (number of edges) of a path from the root to a leaf
 	DirectionType   string // "downwards" (from the root) , "upwards" (to the root), "bidirected"
+	KeySize         int64
 	GeneralParams   GeneralParameters
 }
 
@@ -138,22 +140,22 @@ func popLabel(stackPtr *[]stackElem) stackElem {
 func addEdge(directionType *string, prefix *string, edgePrefix *string,
 	edgeIndex *uint64, edgeLabel *string, globalFromIndex uint64,
 	globalToIndex uint64, fromLabel *string, toLabel *string,
-	e chan *datagen.Doc) {
+	keySize int64, e chan *datagen.Doc) {
 
 	switch *directionType {
 	case DirectionDown:
 		makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalFromIndex, globalToIndex,
-			fromLabel, toLabel, e)
+			fromLabel, toLabel, keySize, e)
 	case DirectionUp:
 		makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalToIndex, globalFromIndex,
-			toLabel, fromLabel, e)
+			toLabel, fromLabel, keySize, e)
 	case DirectionBi:
 		{
 			makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalFromIndex,
-				globalToIndex, fromLabel, toLabel, e)
+				globalToIndex, fromLabel, toLabel, keySize, e)
 			*edgeIndex++
 			makeEdge(prefix, edgePrefix, *edgeIndex, edgeLabel, globalToIndex,
-				globalFromIndex, toLabel, fromLabel, e)
+				globalFromIndex, toLabel, fromLabel, keySize, e)
 		}
 	}
 
@@ -189,7 +191,7 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator(
 		rootLabel := ""
 		var vertexIndex uint64 = t.GeneralParams.StartIndexVertices
 		if makeVertices {
-			makeVertex(&rootPrefix, vertexIndex, &rootLabel, V)
+			makeVertex(&rootPrefix, vertexIndex, &rootLabel, t.KeySize, V)
 		}
 		vertexIndex++
 
@@ -207,7 +209,7 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator(
 			stack = append(stack, stackElem{first, vertexIndex})
 			labelStr := labelToString(&stack)
 			if makeVertices {
-				makeVertex(&t.GeneralParams.Prefix, vertexIndex, &labelStr, V)
+				makeVertex(&t.GeneralParams.Prefix, vertexIndex, &labelStr, t.KeySize, V)
 			}
 
 			// add edge (eps, first) to edge channel
@@ -217,7 +219,7 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator(
 				addEdge(&t.DirectionType, &t.GeneralParams.Prefix,
 					&t.GeneralParams.EdgePrefix, &edgeIndex,
 					&labelStr, t.GeneralParams.StartIndexVertices, vertexIndex,
-					&fromLabel, &toLabel, E)
+					&fromLabel, &toLabel, t.KeySize, E)
 			}
 			vertexIndex++
 			edgeIndex++
@@ -243,13 +245,13 @@ func (t *CompleteNaryTreeParameters) MakeGraphGenerator(
 				fromIndex := stack[len(stack)-1].indexInt
 				toLabel := labelToString(&stack)
 				if makeVertices {
-					makeVertex(&t.GeneralParams.Prefix, vertexIndex, &toLabel, V)
+					makeVertex(&t.GeneralParams.Prefix, vertexIndex, &toLabel, t.KeySize, V)
 				}
 				if makeEdges {
 					toIndex := currentIndexElem
 					addEdge(&t.DirectionType, &t.GeneralParams.Prefix,
 						&t.GeneralParams.EdgePrefix, &edgeIndex,
-						&toLabel, fromIndex, toIndex, &fromLabel, &toLabel, E)
+						&toLabel, fromIndex, toIndex, &fromLabel, &toLabel, t.KeySize, E)
 				}
 				edgeIndex++
 				vertexIndex++

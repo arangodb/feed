@@ -1,7 +1,6 @@
 package graphgen
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/arangodb/feed/pkg/datagen"
@@ -9,6 +8,7 @@ import (
 
 type CollatzParameters struct {
 	Size          uint64
+	KeySize       int64
 	GeneralParams GeneralParameters
 }
 
@@ -29,7 +29,7 @@ func (c *CollatzParameters) VertexChannel() chan *datagen.Doc {
 		for i = 0; uint64(i) < c.Size; i += 1 {
 			index := i + c.GeneralParams.StartIndexVertices
 			label := vertexIndexToLabel(i)
-			makeVertex(&c.GeneralParams.Prefix, index, &label, V)
+			makeVertex(&c.GeneralParams.Prefix, index, &label, c.KeySize, V)
 		}
 		close(V)
 	}()
@@ -52,8 +52,7 @@ func (c *CollatzParameters) EdgeChannel() chan *datagen.Doc {
 				edgeLabel := strconv.FormatUint(i, 10)
 				makeCycleEdge(&c.GeneralParams.Prefix, &c.GeneralParams.EdgePrefix,
 					&edgeLabel, i, j, c.GeneralParams.StartIndexVertices,
-					c.GeneralParams.StartIndexEdges, E)
-				fmt.Printf("Making an edge from %d to %d.\n", i, j)
+					c.GeneralParams.StartIndexEdges, c.KeySize, E)
 			}
 		}
 		close(E)

@@ -146,6 +146,7 @@ func (gp *GraphProg) Insert(what string) error {
 	switch gp.GraphType {
 	case "cyclic":
 		gg, _ = (&graphgen.CycleGraphParameters{Length: uint64(gp.GraphSize),
+			KeySize: gp.DocConfig.KeySize,
 			GeneralParams: graphgen.GeneralParameters{
 				Prefix:             prefix,
 				EdgePrefix:         gp.VertexCollName + "/",
@@ -156,6 +157,7 @@ func (gp *GraphProg) Insert(what string) error {
 			BranchingDegree: uint64(gp.GraphBranching),
 			Depth:           uint64(gp.GraphDepth),
 			DirectionType:   gp.GraphDirection,
+			KeySize:         gp.DocConfig.KeySize,
 			GeneralParams: graphgen.GeneralParameters{
 				Prefix:             "",
 				EdgePrefix:         gp.VertexCollName + "/",
@@ -163,7 +165,18 @@ func (gp *GraphProg) Insert(what string) error {
 				StartIndexEdges:    0}}).MakeGraphGenerator(makeVertices, makeEdges)
 	case "collatz":
 		gg = &graphgen.CollatzParameters{
-			Size: uint64(gp.GraphSize),
+			Size:    uint64(gp.GraphSize),
+			KeySize: gp.DocConfig.KeySize,
+			GeneralParams: graphgen.GeneralParameters{
+				Prefix:             prefix,
+				EdgePrefix:         gp.VertexCollName + "/",
+				StartIndexVertices: 0,
+				StartIndexEdges:    0}}
+	case "regular":
+		gg = &graphgen.RegularParameters{
+			Size:    uint64(gp.GraphSize),
+			Degree:  uint64(gp.GraphBranching),
+			KeySize: gp.DocConfig.KeySize,
 			GeneralParams: graphgen.GeneralParameters{
 				Prefix:             prefix,
 				EdgePrefix:         gp.VertexCollName + "/",

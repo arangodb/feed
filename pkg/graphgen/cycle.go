@@ -8,6 +8,7 @@ import (
 
 type CycleGraphParameters struct {
 	Length        uint64
+	KeySize       int64
 	GeneralParams GeneralParameters
 }
 
@@ -17,14 +18,14 @@ func vertexIndexToLabel(index uint64) string {
 
 func makeCycleEdge(prefix *string, edgePrefix *string, edgeLabel *string, localFromIndex uint64,
 	localToIndex uint64, startIndexVertices uint64, startIndexEdges uint64,
-	e chan *datagen.Doc) {
+	keySize int64, e chan *datagen.Doc) {
 	edgeIndex := localFromIndex + startIndexEdges
 	fromIndex := localFromIndex + startIndexVertices
 	toIndex := localToIndex + startIndexVertices
 	fromLabel := vertexIndexToLabel(fromIndex)
 	toLabel := vertexIndexToLabel(toIndex)
 	makeEdge(prefix, edgePrefix, edgeIndex, edgeLabel, fromIndex, toIndex,
-		&fromLabel, &toLabel, e)
+		&fromLabel, &toLabel, keySize, e)
 }
 
 func (c *CycleGraphParameters) MakeGraphGenerator(
@@ -44,7 +45,7 @@ func (c *CycleGraphParameters) MakeGraphGenerator(
 			for i = 0; uint64(i) < c.Length; i += 1 {
 				index := i + c.GeneralParams.StartIndexVertices
 				label := vertexIndexToLabel(i)
-				makeVertex(&c.GeneralParams.Prefix, index, &label, V)
+				makeVertex(&c.GeneralParams.Prefix, index, &label, c.KeySize, V)
 			}
 			close(V)
 		}()
@@ -60,12 +61,12 @@ func (c *CycleGraphParameters) MakeGraphGenerator(
 				edgeLabel := strconv.FormatUint(i, 10)
 				makeCycleEdge(&c.GeneralParams.Prefix, &c.GeneralParams.EdgePrefix,
 					&edgeLabel, i, i+1, c.GeneralParams.StartIndexVertices,
-					c.GeneralParams.StartIndexEdges, E)
+					c.GeneralParams.StartIndexEdges, c.KeySize, E)
 			}
 			edgeLabel := strconv.FormatUint(c.Length-1, 10)
 			makeCycleEdge(&c.GeneralParams.Prefix, &c.GeneralParams.EdgePrefix,
 				&edgeLabel, c.Length-1, 0, c.GeneralParams.StartIndexVertices,
-				c.GeneralParams.StartIndexEdges, E)
+				c.GeneralParams.StartIndexEdges, c.KeySize, E)
 
 			close(E)
 		}()

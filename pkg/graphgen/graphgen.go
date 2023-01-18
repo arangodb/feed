@@ -76,6 +76,7 @@ func makeEdge(
 	globalToIndex uint64,
 	fromLabel *string,
 	toLabel *string,
+	keySize int64,
 	edgeChannel chan *datagen.Doc) {
 
 	var edge datagen.Doc
@@ -84,8 +85,8 @@ func makeEdge(
 	edge.FromIndex = globalFromIndex
 	edge.ToIndex = globalToIndex
 	edge.Label = *prefix + *edgeLabel
-	edge.From = *edgePrefix + datagen.KeyFromIndex(globalFromIndex)
-	edge.To = *edgePrefix + datagen.KeyFromIndex(globalToIndex)
+	edge.From = *edgePrefix + datagen.KeyFromIndex(globalFromIndex)[0:keySize]
+	edge.To = *edgePrefix + datagen.KeyFromIndex(globalToIndex)[0:keySize]
 	edge.FromLabel = *prefix + *fromLabel
 	edge.ToLabel = *prefix + *toLabel
 	edgeChannel <- &edge
@@ -95,10 +96,11 @@ func makeVertex(
 	prefix *string,
 	globalIndex uint64,
 	label *string,
+	keySize int64,
 	vertexChannel chan *datagen.Doc) {
 
 	var vertex datagen.Doc
-	vertex.Key = datagen.KeyFromIndex(globalIndex)
+	vertex.Key = datagen.KeyFromIndex(globalIndex)[0:keySize]
 	vertex.Index = globalIndex
 	vertex.Label = *prefix + *label
 	vertexChannel <- &vertex

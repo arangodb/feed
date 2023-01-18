@@ -64,7 +64,7 @@ func (lp *LexicographicalProductParameters) MakeGraphGenerator(
 				// produce all vertices with first element v
 				for _, rightVertex := range verticesRight {
 					label := fmt.Sprintf("(%s,%s),", v.Label, rightVertex.label)
-					makeVertex(&lp.GeneralParams.Prefix, vertexIndex, &label, V)
+					makeVertex(&lp.GeneralParams.Prefix, vertexIndex, &label, 64, V)
 					vertexIndex++
 				}
 			}
@@ -100,7 +100,7 @@ func (lp *LexicographicalProductParameters) MakeGraphGenerator(
 						edgeLabel := strconv.FormatUint(countEdges, 10)
 						makeEdge(&lp.GeneralParams.Prefix, &lp.GeneralParams.EdgePrefix,
 							countEdges, &edgeLabel, newFromIndex, newToIndex,
-							&newFromLabel, &newToLabel, E)
+							&newFromLabel, &newToLabel, 64, E)
 						countEdges++
 					}
 				}
@@ -116,7 +116,7 @@ func (lp *LexicographicalProductParameters) MakeGraphGenerator(
 					edgeLabel := strconv.FormatUint(countEdges, 10)
 					makeEdge(&lp.GeneralParams.Prefix, &lp.GeneralParams.EdgePrefix,
 						countEdges, &edgeLabel, newFromIndex, newToIndex, &newFromLabel,
-						&newToLabel, E)
+						&newToLabel, 64, E)
 					countEdges++
 				}
 			}

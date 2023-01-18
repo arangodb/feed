@@ -8,6 +8,7 @@ import (
 
 type EdgelessGraphParameters struct {
 	Size          uint64 // number of vertices
+	KeySize       int64
 	GeneralParams GeneralParameters
 }
 
@@ -29,7 +30,7 @@ func (g *EdgelessGraphParameters) MakeGraphGenerator(
 			for i = 0; i < g.Size; i += 1 {
 				label := strconv.FormatUint(i, 10)
 				makeVertex(&g.GeneralParams.Prefix,
-					g.GeneralParams.StartIndexVertices+i, &label, V)
+					g.GeneralParams.StartIndexVertices+i, &label, g.KeySize, V)
 			}
 			close(V)
 

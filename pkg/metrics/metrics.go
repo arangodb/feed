@@ -70,4 +70,8 @@ var (
 		Name: "feed_batches_read_total",
 		Help: "The total number of batches read.",
 	})
+	GraphTraversals = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feed_graph_traversals_total",
+		Help: "The total number of graph traversals run.",
+	})
 )

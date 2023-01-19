@@ -327,7 +327,7 @@ func (np *NormalProg) Truncate(cl driver.Client) error {
 	return nil
 }
 
-func (np *NormalProg) Insert(cl driver.Client) error {
+func (np *NormalProg) Insert() error {
 	if np.DocConfig.KeySize < 1 || np.DocConfig.KeySize > 64 {
 		np.DocConfig.KeySize = 64
 	}
@@ -345,18 +345,18 @@ func (np *NormalProg) Insert(cl driver.Client) error {
 	return nil
 }
 
-func (np *NormalProg) RunQueryOnIdx(cl driver.Client) error {
+func (np *NormalProg) RunQueryOnIdx() error {
 	Print("\n")
 	PrintTS(fmt.Sprintf("normal: Will perform query on idx.\n\n"))
 
 	if err := runQueryOnIdxInParallel(np); err != nil {
-		return fmt.Errorf("can not run query on idx")
+		return fmt.Errorf("can not run query on idx: %v", err)
 	}
 
 	return nil
 }
 
-func (np *NormalProg) CreateIdx(cl driver.Client) error {
+func (np *NormalProg) CreateIdx() error {
 	Print("\n")
 	PrintTS(fmt.Sprintf("normal: Will perform index creation.\n\n"))
 
@@ -368,7 +368,7 @@ func (np *NormalProg) CreateIdx(cl driver.Client) error {
 	return nil
 }
 
-func (np *NormalProg) DropIdx(cl driver.Client) error {
+func (np *NormalProg) DropIdx() error {
 	Print("\n")
 	PrintTS(fmt.Sprintf("normal: Will perform index drop.\n\n"))
 
@@ -380,7 +380,7 @@ func (np *NormalProg) DropIdx(cl driver.Client) error {
 	return nil
 }
 
-func (np *NormalProg) RandomReplace(cl driver.Client) error {
+func (np *NormalProg) RandomReplace() error {
 	Print("\n")
 	PrintTS(fmt.Sprintf("normal: Will perform random replaces.\n\n"))
 
@@ -391,7 +391,7 @@ func (np *NormalProg) RandomReplace(cl driver.Client) error {
 	return nil
 }
 
-func (np *NormalProg) RandomUpdate(cl driver.Client) error {
+func (np *NormalProg) RandomUpdate() error {
 	Print("\n")
 	PrintTS(fmt.Sprintf("normal: Will perform random updates.\n\n"))
 
@@ -402,7 +402,7 @@ func (np *NormalProg) RandomUpdate(cl driver.Client) error {
 	return nil
 }
 
-func (np *NormalProg) RandomRead(cl driver.Client) error {
+func (np *NormalProg) RandomRead() error {
 	Print("\n")
 	PrintTS(fmt.Sprintf("\nnormal: Will perform random reads.\n\n"))
 
@@ -508,7 +508,7 @@ func runQueryOnIdxInParallel(np *NormalProg) error {
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("queryOnIdx: can not update randomly in parallel: %v", err)
+		return fmt.Errorf("queryOnIdx: can not run random traversals in parallel: %v", err)
 	}
 	return nil
 }
@@ -1109,19 +1109,19 @@ func (np *NormalProg) Execute() error {
 	case "truncate":
 		err = np.Truncate(cl)
 	case "insert":
-		err = np.Insert(cl)
+		err = np.Insert()
 	case "randomRead":
-		err = np.RandomRead(cl)
+		err = np.RandomRead()
 	case "randomUpdate":
-		err = np.RandomUpdate(cl)
+		err = np.RandomUpdate()
 	case "randomReplace":
-		err = np.RandomReplace(cl)
+		err = np.RandomReplace()
 	case "createIdx":
-		err = np.CreateIdx(cl)
+		err = np.CreateIdx()
 	case "dropIdx":
-		err = np.DropIdx(cl)
+		err = np.DropIdx()
 	case "queryOnIdx":
-		err = np.RunQueryOnIdx(cl)
+		err = np.RunQueryOnIdx()
 	case "dropDatabase":
 		err = np.DropDatabase(cl)
 	default:

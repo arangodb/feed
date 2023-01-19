@@ -6,6 +6,7 @@ import (
 	"github.com/arangodb/feed/pkg/datagen"
 	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/feed/pkg/graphgen"
+	"github.com/arangodb/feed/pkg/metrics"
 	"github.com/arangodb/go-driver"
 
 	"context"
@@ -47,9 +48,10 @@ func (g *GraphProg) StatsJSON() interface{} {
 
 var (
 	graphSubprograms = map[string]struct{}{
-		"create":         {},
-		"insertVertices": {},
-		"insertEdges":    {},
+		"create":          {},
+		"insertVertices":  {},
+		"insertEdges":     {},
+		"randomTraversal": {},
 	}
 )
 
@@ -315,6 +317,98 @@ func (gp *GraphProg) Insert(what string) error {
 	return nil
 }
 
+func (gp *GraphProg) RandomTraversal() error {
+	Print("\n")
+	PrintTS(fmt.Sprintf("graph: Will perform random traversals.\n\n"))
+
+	if err := runRandomTraversalInParallel(gp); err != nil {
+		return fmt.Errorf("can not run random travesal: %v", err)
+	}
+
+	return nil
+}
+
+func runRandomTraversalInParallel(gp *GraphProg) error {
+	err := RunParallel(gp.Parallelism, gp.StartDelay, "randomTraversal", func(id int64) error {
+		// Let's use our own private client and connection here:
+		cl, err := config.MakeClient()
+		if err != nil {
+			return fmt.Errorf("randomTraversal: Can not make client: %v", err)
+		}
+		db, err := cl.Database(context.Background(), gp.Database)
+		if err != nil {
+			return fmt.Errorf("randomTraversal: Can not get database: %s", gp.Database)
+		}
+		// Get the vertex count:
+		coll, err := db.Collection(nil, gp.VertexCollName)
+		if err != nil {
+			PrintTS(fmt.Sprintf("randomTraversal: could not open `%s` vertex collection: %v\n", gp.VertexCollName, err))
+			return err
+		}
+
+		ctx := context.Background()
+		colSize, err := coll.Count(ctx)
+		if err != nil {
+			PrintTS(fmt.Sprintf("randomTraversal: could not count num of vertices for `%s` vertex collection: %v\n", gp.VertexCollName, err))
+			return err
+		}
+
+		times := make([]time.Duration, 0, gp.LoadPerThread)
+		cyclestart := time.Now()
+
+		// It is crucial that every go routine has its own random source,
+		// otherwise we create a lot of contention.
+		source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
+
+		for i := int64(1); i <= gp.LoadPerThread; i++ {
+			start := time.Now()
+			randIntId := source.Int63n(colSize)
+			var doc datagen.Doc
+			doc.ShaKey(randIntId, int(gp.DocConfig.KeySize))
+
+			queryStr := fmt.Sprintf("FOR v IN 1..%d  OUTBOUND \"%s/%s\" GRAPH %s OPTIONS {\"uniqueVertices\":\"global\", \"order\":\"bfs\"} RETURN v._key", gp.GraphDepth, gp.VertexCollName, doc.Key, gp.GraphName)
+			_, err = db.Query(ctx, queryStr, nil)
+
+			if err != nil {
+				return fmt.Errorf("Can not execute graph traversal: %v\n", err)
+			}
+			metrics.GraphTraversals.Inc()
+			times = append(times, time.Now().Sub(start))
+		}
+		totaltime := time.Now().Sub(cyclestart)
+		randomtraversalspersec := float64(gp.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+		stats := NormalStatsOneThread{}
+		stats.TotalTime = totaltime
+		stats.NumberOps = gp.LoadPerThread
+		stats.OpsPerSecond = randomtraversalspersec
+		stats.FillInStats(times)
+		PrintStatistics(&stats, fmt.Sprintf("graph (randomTraversals):\n  Times for running %d random traversals.\n  traversals per second in this go routine: %f", gp.LoadPerThread, randomtraversalspersec))
+
+		// Report back:
+		gp.Stats.Mutex.Lock()
+		gp.Stats.Threads = append(gp.Stats.Threads, stats)
+		gp.Stats.Mutex.Unlock()
+		return nil
+	},
+		func(totaltime time.Duration, haveError bool) error {
+			// Here, we aggregate the data from all threads and report for the
+			// whole command:
+			gp.Stats.Overall = AggregateStats(gp.Stats.Threads, totaltime)
+			gp.Stats.Overall.TotalTime = totaltime
+			gp.Stats.Overall.HaveError = haveError
+			randtraversalsspersec := float64(gp.Parallelism*gp.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+			msg := fmt.Sprintf("graph (randomTraverals):\n  Total number of random traversals: %d,\n  total traversals per second: %f,\n  with errors: %v", gp.Parallelism*gp.LoadPerThread, randtraversalsspersec, haveError)
+			statsmsg := gp.Stats.Overall.StatsToStrings()
+			PrintTSs(msg, statsmsg)
+			return nil
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("randomTraverals: cannot run traversals in parallel: %v", err)
+	}
+	return nil
+}
+
 // Execute executes a program of type NormalProg, depending on which
 // subcommand is chosen in the arguments.
 func (gp *GraphProg) Execute() error {
@@ -326,6 +420,8 @@ func (gp *GraphProg) Execute() error {
 		return gp.Insert("vertices")
 	case "insertEdges":
 		return gp.Insert("edges")
+	case "randomTraversal":
+		return gp.RandomTraversal()
 	}
 	return nil
 }

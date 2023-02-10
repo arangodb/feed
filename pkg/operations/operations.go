@@ -173,7 +173,7 @@ func Print(s string) {
 
 func PrintStatistics(stats *NormalStatsOneThread, msg string) {
 	config.OutputMutex.Lock()
-	fmt.Printf("%v %s:\n  %s (median),\n  %s (90%%ile),\n  %s (99%%ilie),\n  %s (average),\n  %s (minimum),\n  %s (maximum)\n\n",
+	fmt.Printf("%v %s:\n  %s (median),\n  %s (90%%ile),\n  %s (99%%ile),\n  %s (average),\n  %s (minimum),\n  %s (maximum)\n\n",
 		time.Now(), msg, stats.Median, stats.Percentile90, stats.Percentile99,
 		stats.Average, stats.Minimum, stats.Maximum)
 	config.OutputMutex.Unlock()

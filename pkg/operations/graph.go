@@ -32,6 +32,10 @@ func (g *GraphProg) Lines() (int, int) {
 	return g.StartLine, g.EndLine
 }
 
+func (g *GraphProg) SetSource(lines []string) {
+	g.Source = lines
+}
+
 func (g *GraphProg) StatsOutput() []string {
 	return []string{
 		fmt.Sprintf("graph: Have run for %v (lines %d..%d of script)\n",

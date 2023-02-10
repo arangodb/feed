@@ -16,13 +16,15 @@ type ProgMeta struct {
 	EndTime   time.Time     `json:"endTime"`
 	RunTime   time.Duration `json:"runTime"`
 	Type      string        `json:"type"`
+	Source    []string      `json:"source"`
 }
 
 type Program interface {
-	Execute() error         // Runs the program
-	Lines() (int, int)      // Returns the input lines of the program
-	StatsOutput() []string  // Run after Execute
-	StatsJSON() interface{} // Run after Execute, result must be serializable
+	Execute() error           // Runs the program
+	Lines() (int, int)        // Returns the input lines of the program
+	StatsOutput() []string    // Run after Execute
+	StatsJSON() interface{}   // Run after Execute, result must be serializable
+	SetSource(lines []string) // Set source lines
 }
 
 type Maker func(args []string, line int) (Program, error)
@@ -36,6 +38,10 @@ type Sequential struct {
 
 func (s *Sequential) Lines() (int, int) {
 	return s.StartLine, s.EndLine
+}
+
+func (s *Sequential) SetSource(lines []string) {
+	s.Source = lines
 }
 
 func (s *Sequential) StatsOutput() []string {
@@ -87,6 +93,10 @@ type ParallelStats struct {
 
 func (p *Parallel) Lines() (int, int) {
 	return p.StartLine, p.EndLine
+}
+
+func (p *Parallel) SetSource(lines []string) {
+	p.Source = lines
 }
 
 func (p *Parallel) StatsOutput() []string {
@@ -186,6 +196,10 @@ func (w *WaitProg) Lines() (int, int) {
 	return w.StartLine, w.EndLine
 }
 
+func (w *WaitProg) SetSource(lines []string) {
+	w.Source = lines
+}
+
 func (w *WaitProg) StatsOutput() []string {
 	return []string{
 		fmt.Sprintf("wait: Have waited %d seconds (lines %d..%d of script)\n",
@@ -260,6 +274,7 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 		}
 		par.StartLine = startLine + 1
 		par.EndLine = *pos + 1
+		par.SetSource(lines[startLine+1 : *pos])
 		*pos += 1 // consume ]
 		return &par, nil
 	} else if line == "[" {
@@ -283,6 +298,7 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 		}
 		seq.StartLine = startLine + 1
 		seq.EndLine = *pos + 1
+		seq.SetSource(lines[startLine+1 : *pos])
 		*pos += 1 // consume ]
 		return &seq, nil
 	} else if line == "}" {
@@ -301,6 +317,8 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 		return nil, fmt.Errorf("No Maker for first word %s in line %d of input in depth %d", cmd, *pos+1, depth)
 	}
 	prog, err := maker(args, *pos+1)
+	st, en := prog.Lines()
+	prog.SetSource(lines[st-1 : en])
 	if err != nil {
 		return nil, fmt.Errorf("Got error from Maker for %s with args %v in line %d of input in depth %d", cmd, args, *pos+1, depth)
 	}

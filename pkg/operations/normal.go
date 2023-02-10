@@ -124,6 +124,10 @@ func (n *NormalProg) Lines() (int, int) {
 	return n.Stats.StartLine, n.Stats.EndLine
 }
 
+func (n *NormalProg) SetSource(lines []string) {
+	n.Stats.Source = lines
+}
+
 func (s *NormalStatsOneThread) StatsToStrings() []string {
 	return []string{
 		fmt.Sprintf("  NumberOps : %d\n", s.NumberOps),

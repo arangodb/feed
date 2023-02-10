@@ -35,6 +35,10 @@ func (cgp *cycleGraphParameters) Lines() (int, int) {
 	return cgp.StartLine, cgp.EndLine
 }
 
+func (cgp *cycleGraphParameters) SetSource(lines []string) {
+	cgp.Source = lines
+}
+
 func (cgp *cycleGraphParameters) StatsOutput() []string {
 	return []string{
 		fmt.Sprintf("graph (cycle): Have run for %v (lines %d..%d of script)\n",
@@ -71,6 +75,10 @@ type pathGraphParameters struct {
 
 func (pgp *pathGraphParameters) Lines() (int, int) {
 	return pgp.StartLine, pgp.EndLine
+}
+
+func (pgp *pathGraphParameters) SetSource(lines []string) {
+	pgp.Source = lines
 }
 
 func (pgp *pathGraphParameters) StatsOutput() []string {

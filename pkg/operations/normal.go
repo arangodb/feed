@@ -142,13 +142,13 @@ func (s *NormalStatsOneThread) StatsToStrings() []string {
 }
 
 func (n *NormalProg) StatsOutput() []string {
-	res := []string{
+	res := config.MakeStatsOutput(n.Stats.Source, []string{
 		fmt.Sprintf("normal (%s): Have run for %v (lines %d..%d of script)\n",
 			n.SubCommand, n.Stats.EndTime.Sub(n.Stats.StartTime), n.Stats.StartLine,
 			n.Stats.EndLine),
 		fmt.Sprintf("  Start time: %v\n", n.Stats.StartTime),
 		fmt.Sprintf("  End time  : %v\n", n.Stats.EndTime),
-	}
+	})
 	res = append(res, n.Stats.Overall.StatsToStrings()...)
 	return res
 }

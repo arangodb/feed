@@ -45,12 +45,12 @@ func (s *Sequential) SetSource(lines []string) {
 }
 
 func (s *Sequential) StatsOutput() []string {
-	res := []string{
+	res := config.MakeStatsOutput(s.Source, []string{
 		fmt.Sprintf("sequential: Runtime: %v (lines %d..%d of script)\n",
 			s.EndTime.Sub(s.StartTime), s.StartLine, s.EndLine),
 		fmt.Sprintf("      Start time: %v\n", s.StartTime),
 		fmt.Sprintf("      End time  : %v\n", s.EndTime),
-	}
+	})
 	for i := 0; i < len(s.Steps); i += 1 {
 		res = append(res, []string{
 			"\n",
@@ -100,12 +100,12 @@ func (p *Parallel) SetSource(lines []string) {
 }
 
 func (p *Parallel) StatsOutput() []string {
-	res := []string{
+	res := config.MakeStatsOutput(p.Source, []string{
 		fmt.Sprintf("parallel: Runtime: %v (lines %d..%d of script)\n",
 			p.EndTime.Sub(p.StartTime), p.StartLine, p.EndLine),
 		fmt.Sprintf("      Start time: %v\n", p.StartTime),
 		fmt.Sprintf("      End time  : %v\n", p.EndTime),
-	}
+	})
 	for i := 0; i < len(p.Steps); i += 1 {
 		res = append(res, []string{
 			"\n",
@@ -201,12 +201,12 @@ func (w *WaitProg) SetSource(lines []string) {
 }
 
 func (w *WaitProg) StatsOutput() []string {
-	return []string{
+	return config.MakeStatsOutput(w.Source, []string{
 		fmt.Sprintf("wait: Have waited %d seconds (lines %d..%d of script)\n",
 			w.i, w.StartLine, w.EndLine),
 		fmt.Sprintf("      Start time: %v\n", w.StartTime),
 		fmt.Sprintf("      End time  : %v\n", w.EndTime),
-	}
+	})
 }
 
 func (w *WaitProg) StatsJSON() interface{} {

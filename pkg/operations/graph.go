@@ -37,12 +37,12 @@ func (g *GraphProg) SetSource(lines []string) {
 }
 
 func (g *GraphProg) StatsOutput() []string {
-	return []string{
+	return config.MakeStatsOutput(g.Source, []string{
 		fmt.Sprintf("graph: Have run for %v (lines %d..%d of script)\n",
 			g.EndTime.Sub(g.StartTime), g.StartLine, g.EndLine),
 		fmt.Sprintf("       Start time: %v\n", g.StartTime),
 		fmt.Sprintf("       End time  : %v\n", g.EndTime),
-	}
+	})
 }
 
 func (g *GraphProg) StatsJSON() interface{} {

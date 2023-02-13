@@ -40,12 +40,13 @@ func (cgp *cycleGraphParameters) SetSource(lines []string) {
 }
 
 func (cgp *cycleGraphParameters) StatsOutput() []string {
-	return []string{
-		fmt.Sprintf("graph (cycle): Have run for %v (lines %d..%d of script)\n",
-			cgp.EndTime.Sub(cgp.StartTime), cgp.StartLine, cgp.EndLine),
-		fmt.Sprintf("      Start time: %v\n", cgp.StartTime),
-		fmt.Sprintf("      End time  : %v\n", cgp.EndTime),
-	}
+	return config.MakeStatsOutput(cgp.Source,
+		[]string{"",
+			fmt.Sprintf("graph (cycle): Have run for %v (lines %d..%d of script)\n",
+				cgp.EndTime.Sub(cgp.StartTime), cgp.StartLine, cgp.EndLine),
+			fmt.Sprintf("      Start time: %v\n", cgp.StartTime),
+			fmt.Sprintf("      End time  : %v\n", cgp.EndTime),
+		})
 }
 
 func (cgp *cycleGraphParameters) StatsJSON() interface{} {
@@ -82,12 +83,12 @@ func (pgp *pathGraphParameters) SetSource(lines []string) {
 }
 
 func (pgp *pathGraphParameters) StatsOutput() []string {
-	return []string{
+	return config.MakeStatsOutput(pgp.Source, []string{
 		fmt.Sprintf("graph (path): Have run for %v (lines %d..%d of script)\n",
 			pgp.EndTime.Sub(pgp.StartTime), pgp.StartLine, pgp.EndLine),
 		fmt.Sprintf("      Start time: %v\n", pgp.StartTime),
 		fmt.Sprintf("      End time  : %v\n", pgp.EndTime),
-	}
+	})
 }
 
 func (pgp *pathGraphParameters) StatsJSON() interface{} {

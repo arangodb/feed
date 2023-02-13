@@ -42,3 +42,15 @@ func MakeClient() (driver.Client, error) {
 	}
 	return cl, nil
 }
+
+func MakeStatsOutput(source []string, text []string) []string {
+	res := make([]string, 0, len(source)+len(text)+1)
+	res = append(res, "Source lines:\n")
+	res = append(res, source...)
+	for _, l := range source {
+		res = append(res, l+"\n")
+	}
+	res = append(res, "\n")
+	res = append(res, text...)
+	return res
+}

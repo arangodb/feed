@@ -18,6 +18,7 @@ func Init() {
 	}
 	feedlang.Atoms["normal"] = NewNormalProg
 	feedlang.Atoms["graph"] = NewGraphProg
+	feedlang.Atoms["replayAQL"] = NewReplayAqlProg
 }
 
 // CheckInt64Parameter is used to work on user input from the program and

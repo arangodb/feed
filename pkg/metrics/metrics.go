@@ -74,4 +74,8 @@ var (
 		Name: "feed_graph_traversals_total",
 		Help: "The total number of graph traversals run.",
 	})
+	QueriesReplayed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feed_replayed_aql_queries_total",
+		Help: "The total number of AQL queries replayed.",
+	})
 )

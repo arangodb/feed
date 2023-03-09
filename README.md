@@ -68,6 +68,8 @@ of subcommands and then later for detailed instructions.
 
  - `normal`: This is a normal (vertex) collection.
  - `graph`: This is for graphs.
+ - `replayAQL`: This replays a previously recorded list of AQL queries
+   against a new deployment.
 
 ### Operation cases for `normal`
 
@@ -408,4 +410,77 @@ possible parameters for usage, see `create`, plus:
  - `batchSize`: size of the batches for the insert (default: `1000`)
  - `parallelism`: number of threads (go-routines) to use client-side
    (default: `16`)
+
+
+## Command `replayAQL`
+
+Replays a previously recorded list of AQL queries against a new
+deployment. You have to switch the log topic `requests` to the `TRACE`
+level on all your coordinators. You can either do this on the command
+line with
+
+```
+--log.level=requests=trace
+```
+
+or at runtime by sending a body of
+
+```
+{"requests":"trace"}
+```
+
+to the API `PUT /_admin/log/level` on all coordinators.
+
+Then use the awk script `scripts/extractQueries.awk` on your log as
+follows:
+
+```
+awk -f scripts/extractQueries.awk < coordinator.log > queries.jsonl
+```
+
+This will produce a file `queries.jsonl` with lines like this:
+
+```
+{"t":"2023-03-09T08:31:09Z", "db": "_system", "q":{"query":"FOR d IN c FILTER d.Hallo == @x RETURN d","count":false,"bindVars":{"x":12},"stream":false}}
+```
+
+You can then use this file as input file for `feed` for a command like
+this:
+
+```
+replayAQL input=queries.jsonl parallelism=8 delayByTimestamp=true
+```
+
+possible parameters for usage:
+
+ - `parallelism`: number of threads (go-routines) to use client-side
+   (default: `16`)
+ - `input`: name of input file in the above format
+ - `delayByTimestamp`: a boolean parameter, for an explanation see below
+
+This command will take the queries and use them on the current
+deployment which is to be tested. It uses the same database names and
+query parameters as before in the recording. All results are consumed
+until the database does not deliver any more.
+
+The `feed` tool will use as many go routines (threads) as given in the
+`parallelism` parameter. Each go routine will grab a query and execute
+it against the deployment until it returns no more results, and then
+moves to the next query. Note that each query in the input is executed
+by exactly one of the go routines.
+
+If the argument `delayByTimestamp` is `false`, then each go routine will
+try as quickly as possible to execute all queries it can grab (one by
+one). If, however, the argument is `true`, then each go routine will
+consider the time stamps. It will delay the executing of a query, as
+long as the time which has passed since starting the command is smaller
+than the time difference of the time stamp of the query and the very
+first time stamp in the file. The effect of this is essentially that
+the queries are executed in the original frequency (unless the
+parallelism is lower than the number of concurrently running queries in
+the recording).
+
+Note that if you combine multiple logs from multiple coordinators, you
+have to merge these files and sort the input file by time stamp.
+The time stamps must be according to RFC3339.
 

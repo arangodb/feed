@@ -78,4 +78,8 @@ var (
 		Name: "feed_replayed_aql_queries_total",
 		Help: "The total number of AQL queries replayed.",
 	})
+	QueriesReplayedErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feed_replayed_aql_queries_errors_total",
+		Help: "The total number of errors occurred in replayed AQL queries.",
+	})
 )

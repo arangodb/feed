@@ -129,6 +129,7 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 				if first {
 					var err error
 					firstTime, err = time.Parse(time.RFC3339, sq.TimeStamp)
+					PrintTS(fmt.Sprintf("Guck: %v\n", firstTime))
 					if err != nil {
 						PrintTS(fmt.Sprintf("replayAQL: Could not parse first time stamp %s, error: %v\n", sq.TimeStamp, err))
 					} else {
@@ -204,6 +205,7 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 			cursor, err := db.Query(ctx, q.Query.QueryString, q.Query.BindVars)
 			if err != nil {
 				PrintTS(fmt.Sprintf("Can not execute query: %v, error: %v\n", *q, err))
+				metrics.QueriesReplayedErrors.Inc()
 				errorCount += 1
 			} else {
 				// Get result of query:
@@ -213,6 +215,7 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 					if err != nil {
 						PrintTS(fmt.Sprintf("Error when reading document: %v\n", err))
 						errorCount += 1
+						metrics.QueriesReplayedErrors.Inc()
 						break
 					} else {
 						if config.Verbose {

@@ -1062,7 +1062,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 			_, _, err := edges.CreateDocuments(ctx, docs)
 			cancel()
 			if err != nil {
-				PrintTS(fmt.Sprintf("writeSomeBatches: could not write batch: %v", err))
+				PrintTS(fmt.Sprintf("writeSomeBatches: could not write batch: %v, id: %d", err, id))
 				if np.Retries == 0 {
 					return err
 				}
@@ -1075,8 +1075,12 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 					_, _, err = edges.CreateDocuments(ctx, docs)
 					cancel()
 					if err == nil {
+						if config.Verbose {
+							PrintTS(fmt.Sprintf("writeSomeBatches: retry %d of %d was successful, id: %d", i, np.Retries, id))
+						}
 						break
 					}
+					PrintTS(fmt.Sprintf("writeSomeBatches: could not write batch: %v, id: %d, retry %d of %d", err, id, i, np.Retries))
 					i += 1
 				}
 				if err != nil {

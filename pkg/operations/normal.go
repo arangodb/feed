@@ -1046,6 +1046,9 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 				}
 				var i int64 = 1
 				for i <= np.Retries {
+					if config.Verbose {
+						PrintTS(fmt.Sprintf("normal: %s Need retry for id %d: %d of %d.\n", time.Now(), id, i, np.Retries))
+					}
 					ctx, cancel = context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
 					_, _, err = edges.CreateDocuments(ctx, docs)
 					cancel()

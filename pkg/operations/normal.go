@@ -111,6 +111,12 @@ type NormalProg struct {
 	// Parameter for index creation or query on index
 	IdxName string
 
+	// Timeout for individual batch operation (in seconds)
+	Timeout int64
+
+	// Number of retries if an error (or timeout) happens
+	Retries int64
+
 	// Statistics:
 	Stats NormalStats
 }
@@ -189,6 +195,8 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 		LoadPerThread: GetInt64Value(m, "loadPerThread", 50),
 		QueryLimit:    GetInt64Value(m, "queryLimit", 1),
 		IdxName:       GetStringValue(m, "idxName", ""),
+		Timeout:       GetInt64Value(m, "timeout", 3600),
+		Retries:       GetInt64Value(m, "retries", 0),
 	}
 }
 
@@ -1028,12 +1036,27 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 				doc.FillData(&np.DocConfig, source)
 				docs = append(docs, doc)
 			}
-			ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Hour)
+			ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
 			_, _, err := edges.CreateDocuments(ctx, docs)
 			cancel()
 			if err != nil {
 				PrintTS(fmt.Sprintf("writeSomeBatches: could not write batch: %v", err))
-				return err
+				if np.Retries == 0 {
+					return err
+				}
+				var i int64 = 1
+				for i <= np.Retries {
+					ctx, cancel = context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
+					_, _, err = edges.CreateDocuments(ctx, docs)
+					cancel()
+					if err == nil {
+						break
+					}
+					i += 1
+				}
+				if err != nil {
+					return err
+				}
 			}
 			metrics.DocumentsInserted.Add(float64(np.BatchSize))
 			metrics.BatchesInserted.Inc()

@@ -240,6 +240,55 @@ Possible parameters for usage:
 - `idxName`: user-defined name for the index. Leading and trailing quotes are ignored.
 
 
+## Subcommand `insert` (for `normal`)
+
+Inserts data into a collection with batches.
+
+Example of usage:
+
+```
+normal insert database=xyz collection=c parallelism=10 size=5G documentSize=300 withGeo=false withWords=5 parallelism=16 numberFields=5 batchSize=5000
+```
+
+Possible parameters for usage:
+
+ - `database`: name of the database where random replaces will be
+   executed (default: `_system`)
+ - `collection`: name of the collection where the random replaces will
+   be executed (default: `batchimport`)
+ - `parallelism`: number of threads to execute the replaces concurrently
+   (default: `16`)
+ - `batchSize`: size of the batches (default: `1000`)
+ - `startDelay`: delay in milliseconds between starts of different
+   threads, this is used to stagger the startup of the different threads
+   (go routines) (default: `5`)
+ - `timeout`: timeout in seconds for each batch insert, this is by
+   default very high, but can be lowered for special experiments
+   (default: `3600`)
+ - `retries`: number of retries after an error, errors with successful
+   retries are counted as errors, but do not lead to an abortion of the
+   operation, by default, no retries are done (default: `0`)
+ - `size`: total size of data to be inserted, one can use suffixes `G`
+   for gigabytes (1024^3), `T` for terabytes (1024^4), `M` for megabytes
+   (1024^2) and `K` for kilobytes (1024), (default: `16G`)
+ - `documentSize`: size in bytes of an individual document, this is an
+   approximation, but should be relatively OK, if you use `withGeo`
+   and/or `withWords`, the size will be slightly larger (default: `128`)
+ - `withGeo`: if set to `true`, a special field called `geo` will be
+   generated with a random polygon in GEOJson format (default: `false`)
+ - `withWords`: if set to `true`, a special field called `words` will
+   be generated with a list of some random words from a finite pool
+   (default: `false`)
+ - `keySize`: size in bytes of the key generated, the key will always be
+   a SHA256 value of a stringified integer in the range from 0 to N-1
+   for some value of N-1 determined by the total size of the data,
+   `keySize` is then used to take a prefix of that SHA256 value (hex
+   stringification) of the appropriate number of bytes (default: `32`)
+ - `numberFields`: number of payload fields to generate, the randomly
+   generated string data is distributed across that many fields called
+   `payload0`, `payload1` and so on (default: `1`)
+
+
 ## Subcommand `queryOnIdx` (for `normal`)
 
 Runs queries that will use a specific index in parallel, meaning the
@@ -323,6 +372,9 @@ Possible parameters for usage:
    (default: `50`)
  - `batchSize`: size of the batches (default: `1000`)
 
+For the documents being created as updates the same parameters can
+be used as in the `insert` case above.
+
 
 ## Subcommand `randomReplace` (for `normal`)
 
@@ -345,6 +397,9 @@ Possible parameters for usage:
  - `loadPerThread`: number of times each thread executes random replaces
    (default: `50`)
  - `batchSize`: size of the batches (default: `1000`)
+
+For the documents being created as replacement the same parameters can
+be used as in the `insert` case above.
 
 
 ## Subcommand `create` (for `graph`)
@@ -394,6 +449,9 @@ possible parameters for usage, see `create`, plus:
  - `parallelism`: number of threads (go-routines) to use client-side
    (default: `16`)
 
+For the documents being created as vertices the same parameters as above
+in the `insert` case (subcommand for `normal`) can be used.
+
 
 ## Subcommand `insertedges` (for `graph`)
 
@@ -410,6 +468,9 @@ possible parameters for usage, see `create`, plus:
  - `batchSize`: size of the batches for the insert (default: `1000`)
  - `parallelism`: number of threads (go-routines) to use client-side
    (default: `16`)
+
+For the documents being created as edges the same parameters as above
+in the `insert` case (subcommand for `normal`) can be used.
 
 
 ## Command `replayAQL`

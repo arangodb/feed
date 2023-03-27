@@ -1,3 +1,7 @@
+ - Honour timeout and retries in randomReplace and randomUpdate and possibly
+   others
+ - Honour timeout and retries in graph insert vertices and edges
+ 
  - Finish Grafana dashboards, upload to repository.
 
  - Add a new graph type (random graph)

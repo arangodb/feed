@@ -288,6 +288,21 @@ Possible parameters for usage:
    generated string data is distributed across that many fields called
    `payload0`, `payload1` and so on (default: `1`)
 
+The following are for edge collections to produce random `_from` and
+`_to` values. Do not use them in actual graph insertion commands:
+
+ - `addFromTo`: if set to `true`, add random values for the `_from` and
+	 `_to` attributes to allow insertion into an edge collection (default:
+	 `false`)
+ - `smart`: if set to `true`, add the necessary things for a smart edge
+   collection, this is only relevant, if `addFromTo` is set to `true`,
+	 it changes the format of these attribute values by adding a smart
+	 graph attribute value, furthermore, the generated `_key` is adjusted
+	 (default: `false`)
+ - `vertexCollName`: set this string value to the name of the vertex
+	 collection, which should be used in `_from` and `_to` attributes,
+	 this is only relevant if `addFromTo` is set to `true` (default: `V`)
+
 
 ## Subcommand `queryOnIdx` (for `normal`)
 

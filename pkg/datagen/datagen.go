@@ -90,6 +90,20 @@ func makeRandomPolygon(source *rand.Rand) *Poly {
 	return &ret
 }
 
+// MakeRandomString creates slice of bytes for the provided length.
+// Each byte is in range from 33 to 123. There are no spaces
+func MakeRandomString(length int, source *rand.Rand) string {
+	b := make([]byte, length, length)
+	for i := 0; i < length; i++ {
+		s := source.Int()%52 + 65
+		if s >= 91 {
+			s += 6
+		}
+		b[i] = byte(s)
+	}
+	return string(b)
+}
+
 // MakeRandomStringWithSpaces creates slice of bytes for the provided length.
 // Each byte is in range from 33 to 123.
 func MakeRandomStringWithSpaces(length int, source *rand.Rand) string {

@@ -117,6 +117,13 @@ type NormalProg struct {
 	// Number of retries if an error (or timeout) happens
 	Retries int64
 
+	// Add random _from and _to attributes for edge collections, to be compatible
+	// with smart graphs, we add a random smart graph attribute if the Smart
+	// flag is set.
+	AddFromTo      bool
+	Smart          bool
+	VertexCollName string
+
 	// Statistics:
 	Stats NormalStats
 }
@@ -189,14 +196,17 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 			NumberFields: GetInt64Value(m, "numberFields", 1),
 		},
 
-		Parallelism:   GetInt64Value(m, "parallelism", 16),
-		StartDelay:    GetInt64Value(m, "startDelay", 5),
-		BatchSize:     GetInt64Value(m, "batchSize", 1000),
-		LoadPerThread: GetInt64Value(m, "loadPerThread", 50),
-		QueryLimit:    GetInt64Value(m, "queryLimit", 1),
-		IdxName:       GetStringValue(m, "idxName", ""),
-		Timeout:       GetInt64Value(m, "timeout", 3600),
-		Retries:       GetInt64Value(m, "retries", 0),
+		Parallelism:    GetInt64Value(m, "parallelism", 16),
+		StartDelay:     GetInt64Value(m, "startDelay", 5),
+		BatchSize:      GetInt64Value(m, "batchSize", 1000),
+		LoadPerThread:  GetInt64Value(m, "loadPerThread", 50),
+		QueryLimit:     GetInt64Value(m, "queryLimit", 1),
+		IdxName:        GetStringValue(m, "idxName", ""),
+		Timeout:        GetInt64Value(m, "timeout", 3600),
+		Retries:        GetInt64Value(m, "retries", 0),
+		AddFromTo:      GetBoolValue(m, "addFromTo", false),
+		Smart:          GetBoolValue(m, "smart", false),
+		VertexCollName: GetStringValue(m, "vertexCollName", "V"),
 	}
 }
 
@@ -1034,6 +1044,18 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 				var doc datagen.Doc
 				doc.ShaKey((id*nrBatches+i-1)*np.BatchSize+j-1, int(np.DocConfig.KeySize))
 				doc.FillData(&np.DocConfig, source)
+				if np.AddFromTo {
+					if np.Smart {
+						smartF := datagen.MakeRandomString(2, source)
+						smartT := datagen.MakeRandomString(2, source)
+						doc.From = np.VertexCollName + "/" + smartF + ":" + datagen.MakeRandomString(8, source)
+						doc.To = np.VertexCollName + "/" + smartT + ":" + datagen.MakeRandomString(8, source)
+						doc.Key = smartF + ":" + doc.Key + ":" + smartT
+					} else {
+						doc.From = np.VertexCollName + "/" + datagen.MakeRandomString(8, source)
+						doc.To = np.VertexCollName + "/" + datagen.MakeRandomString(8, source)
+					}
+				}
 				docs = append(docs, doc)
 			}
 			ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)

@@ -28,7 +28,7 @@ func init() {
 	flags := cmd.PersistentFlags()
 	flags.StringSliceVar(&config.Endpoints, "endpoints", []string{"http://localhost:8529"}, "Endpoint of server where data should be written.")
 	flags.BoolVarP(&config.Verbose, "verbose", "v", false, "Verbose output")
-	flags.StringVar(&config.Jwt, "jwt", "", "Verbose output")
+	flags.StringVar(&config.Jwt, "jwt", "", "JWT token for database access (if provided username and password are ignored).")
 	flags.StringVar(&config.Username, "username", "root", "User name for database access.")
 	flags.StringVar(&config.Password, "password", "", "Password for database access.")
 	flags.StringVar(&ProgName, "execute", "doit.feed", "Filename of program to execute.")

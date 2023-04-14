@@ -1,5 +1,5 @@
 [
-graph create name=G vertexColl=V edgeColl=E numberOfShards:3 replicationFactor:2 drop=true
+graph create name=G vertexColl=V edgeColl=E numberOfShards=3 replicationFactor=2 drop=true
 graph insertVertices name=G type=regular graphSize=1000 graphBranching=3 vertexColl=V size=200K parallelism=1 keySize=20
 graph insertEdges name=G type=regular graphSize=1000 graphBranching=3 vertexColl=V edgeColl=E size=200K parallelism=1 keySize=20
 ]

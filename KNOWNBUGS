@@ -1,0 +1,3 @@
+Here is a list of known bugs which we will probably not fix:
+
+ - one cannot use the HTTP/2 protocol for unencrypted endpoints

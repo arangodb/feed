@@ -124,6 +124,8 @@ type NormalProg struct {
 	Smart          bool
 	VertexCollName string
 
+	WaitForSync bool
+
 	// Statistics:
 	Stats NormalStats
 }
@@ -206,6 +208,7 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 		Retries:        GetInt64Value(m, "retries", 0),
 		AddFromTo:      GetBoolValue(m, "addFromTo", false),
 		Smart:          GetBoolValue(m, "smart", false),
+		WaitForSync:    GetBoolValue(m, "waitForSync", false),
 		VertexCollName: GetStringValue(m, "vertexCollName", "V"),
 	}
 }
@@ -250,6 +253,7 @@ func (np *NormalProg) Create(cl driver.Client) error {
 		Type:              driver.CollectionTypeDocument,
 		NumberOfShards:    int(np.NumberOfShards),
 		ReplicationFactor: int(np.ReplicationFactor),
+		WaitForSync:       np.WaitForSync,
 	})
 	if err != nil {
 		return fmt.Errorf("Error: could not create collection %s: %v", np.Collection, err)

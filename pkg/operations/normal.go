@@ -3,6 +3,13 @@ package operations
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/arangodb/feed/pkg/client"
 	"github.com/arangodb/feed/pkg/config"
 	"github.com/arangodb/feed/pkg/database"
@@ -10,12 +17,6 @@ import (
 	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/feed/pkg/metrics"
 	"github.com/arangodb/go-driver"
-	"math/rand"
-	"sort"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 type NormalStatsOneThread struct {
@@ -126,6 +127,8 @@ type NormalProg struct {
 
 	WaitForSync bool
 
+	ReplicationVersion string
+
 	// Statistics:
 	Stats NormalStats
 }
@@ -198,18 +201,19 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 			NumberFields: GetInt64Value(m, "numberFields", 1),
 		},
 
-		Parallelism:    GetInt64Value(m, "parallelism", 16),
-		StartDelay:     GetInt64Value(m, "startDelay", 5),
-		BatchSize:      GetInt64Value(m, "batchSize", 1000),
-		LoadPerThread:  GetInt64Value(m, "loadPerThread", 50),
-		QueryLimit:     GetInt64Value(m, "queryLimit", 1),
-		IdxName:        GetStringValue(m, "idxName", ""),
-		Timeout:        GetInt64Value(m, "timeout", 3600),
-		Retries:        GetInt64Value(m, "retries", 0),
-		AddFromTo:      GetBoolValue(m, "addFromTo", false),
-		Smart:          GetBoolValue(m, "smart", false),
-		WaitForSync:    GetBoolValue(m, "waitForSync", false),
-		VertexCollName: GetStringValue(m, "vertexCollName", "V"),
+		Parallelism:        GetInt64Value(m, "parallelism", 16),
+		StartDelay:         GetInt64Value(m, "startDelay", 5),
+		BatchSize:          GetInt64Value(m, "batchSize", 1000),
+		LoadPerThread:      GetInt64Value(m, "loadPerThread", 50),
+		QueryLimit:         GetInt64Value(m, "queryLimit", 1),
+		IdxName:            GetStringValue(m, "idxName", ""),
+		Timeout:            GetInt64Value(m, "timeout", 3600),
+		Retries:            GetInt64Value(m, "retries", 0),
+		AddFromTo:          GetBoolValue(m, "addFromTo", false),
+		Smart:              GetBoolValue(m, "smart", false),
+		WaitForSync:        GetBoolValue(m, "waitForSync", false),
+		ReplicationVersion: GetStringValue(m, "replicationVersion", ""),
+		VertexCollName:     GetStringValue(m, "vertexCollName", "V"),
 	}
 }
 
@@ -231,7 +235,10 @@ func NewNormalProg(args []string, line int) (feedlang.Program, error) {
 func (np *NormalProg) Create(cl driver.Client) error {
 	start := time.Now()
 	db, err := database.CreateOrGetDatabase(nil, cl, np.Database,
-		&driver.CreateDatabaseOptions{})
+		&driver.CreateDatabaseOptions{
+			Options: driver.CreateDatabaseDefaultOptions{
+				ReplicationVersion: driver.DatabaseReplicationVersion(np.ReplicationVersion),
+			}})
 	if err != nil {
 		return fmt.Errorf("Could not create/open database %s: %v\n", np.Database, err)
 	}

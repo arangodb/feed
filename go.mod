@@ -3,12 +3,12 @@ module github.com/arangodb/feed
 go 1.19
 
 require (
-	github.com/arangodb/go-driver v1.4.1-0.20221107084035-1880acfed49d
+	github.com/arangodb/go-driver v1.5.3-0.20230428134606-b490917a5b5d
 	github.com/fatih/color v1.7.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v0.9.3
 	github.com/spf13/cobra v1.1.3
-	golang.org/x/net v0.0.0-20200625001655-4c5254603344
+	golang.org/x/net v0.7.0
 )
 
 require (
@@ -24,6 +24,6 @@ require (
 	github.com/prometheus/procfs v0.0.0-20190507164030-5867b95ac084 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
-	golang.org/x/sys v0.0.0-20200323222414-85ca7c5b95cd // indirect
-	golang.org/x/text v0.3.2 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 )

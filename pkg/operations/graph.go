@@ -94,7 +94,11 @@ func (gp *GraphProg) Create() error {
 		return fmt.Errorf("Can not make client: %v", err)
 	}
 	db, err := database.CreateOrGetDatabase(nil, cl, gp.Database,
-		&driver.CreateDatabaseOptions{})
+		&driver.CreateDatabaseOptions{
+			Options: driver.CreateDatabaseDefaultOptions{
+				ReplicationVersion: driver.DatabaseReplicationVersion(gp.ReplicationVersion),
+			},
+		})
 	if err != nil {
 		return fmt.Errorf("Could not create/open database %s: %v\n", gp.Database, err)
 	}

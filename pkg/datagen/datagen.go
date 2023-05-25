@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	wordList = []string{
+	shortWordList = []string{
 		"Aldi Süd",
 		"Aldi Nord",
 		"Lidl",
@@ -27,7 +27,23 @@ var (
 		"Tesco",
 		"Morrison",
 	}
+
+	longWordList = []string{}
 )
+
+func FillLongWordList(nr int, source *rand.Rand) {
+	longWordList = make([]string, 0, 5000)
+	for i := 0; i < nr; i++ {
+		len := source.Intn(10) + 5
+		longWordList = append(longWordList, MakeRandomString(len, source))
+	}
+}
+
+func init() {
+	source := rand.NewSource(int64(0xdeadbeef))
+	rand := rand.New(source)
+	FillLongWordList(5000, rand)
+}
 
 type Point []float64
 
@@ -132,7 +148,15 @@ func makeRandomWords(nr int, source *rand.Rand) string {
 		if i > 1 {
 			b = append(b, ' ')
 		}
-		b = append(b, []byte(wordList[source.Int()%len(wordList)])...)
+		r := source.Intn(10)
+		if r == 0 {
+			b = append(b, []byte(shortWordList[source.Int()%len(shortWordList)])...)
+		} else if r <= 8 {
+			b = append(b, []byte(longWordList[source.Int()%len(longWordList)])...)
+		} else {
+			len := source.Intn(10) + 5
+			b = append(b, []byte(MakeRandomString(len, source))...)
+		}
 	}
 	return string(b)
 }
@@ -170,7 +194,7 @@ func (doc *Doc) FillData(docConfig *DocumentConfig, source *rand.Rand) {
 	} else if docConfig.NumberFields < 1 {
 		docConfig.NumberFields = 1
 	}
-	payloadSize := (docConfig.SizePerDoc - docConfig.KeySize - 106) / docConfig.NumberFields
+	payloadSize := (docConfig.SizePerDoc - docConfig.KeySize - 106 - 11*docConfig.WithWords) / docConfig.NumberFields
 	// 106 is the approximate overhead for _id, _rev and structures
 	if payloadSize < 0 {
 		payloadSize = int64(5)

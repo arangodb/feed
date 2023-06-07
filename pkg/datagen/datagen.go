@@ -132,10 +132,10 @@ func makeRandomWords(nr int, source *rand.Rand) string {
 		if i > 1 {
 			b = append(b, ' ')
 		}
-		r := source.Intn(10)
-		if r == 0 {
+		r := source.Intn(100)
+		if r < 3 {
 			b = append(b, []byte(shortWordList[source.Int()%len(shortWordList)])...)
-		} else if r <= 8 {
+		} else if r < 97 {
 			b = append(b, []byte(LongWordList[source.Int()%len(LongWordList)])...)
 		} else {
 			len := source.Intn(10) + 5

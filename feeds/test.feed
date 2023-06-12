@@ -3,10 +3,10 @@ normal create database=xyz collection=c numberOfShards=3 replicationFactor=3 dro
 normal createIdx database=xyz collection=c withGeo=false numberFields=5
 normal createIdx database=xyz collection=c withGeo=false numberFields=4 idxName="julia"
 normal createIdx database=xyz collection=c withGeo=false numberFields=3 idxName="dog"
-normal insert database=xyz collection=c size=100M documentSize=300 withGeo=true withWords=5 parallelism=10 numberFields=5 outFormat=json
+normal insert database=xyz collection=c size=100M documentSize=300 withGeo=true withWords=7 parallelism=10 numberFields=5 outFormat=json
 normal randomRead database=xyz collection=c parallelism=10 loadPerThread=50 outFormat=json
-normal randomUpdate database=xyz collection=c parallelism=10 loadPerThread=50
-normal randomReplace database=xyz collection=c parallelism=10 loadPerThread=50
+normal randomUpdate database=xyz collection=c parallelism=10 withWords=6 loadPerThread=50
+normal randomReplace database=xyz collection=c parallelism=10 withWords=10 loadPerThread=50
 normal queryOnIdx database=xyz collection=c queryLimit=1 parallelism=1
 normal queryOnIdx database=xyz collection=c queryLimit=1 parallelism=1 idxName="dog"
 normal queryOnIdx database=xyz collection=c queryLimit=1 parallelism=1 idxName=primary

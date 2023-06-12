@@ -14,9 +14,17 @@ var (
 		Name: "feed_collections_created_total",
 		Help: "The total number of collections created.",
 	})
+	ViewsCreated = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feed_views_created_total",
+		Help: "The total number of views created.",
+	})
 	CollectionsDropped = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "feed_collections_dropped_total",
 		Help: "The total number of collections dropped.",
+	})
+	ViewsDropped = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "feed_views_dropped_total",
+		Help: "The total number of views dropped.",
 	})
 	CollectionsTruncated = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "feed_collections_truncated_total",

@@ -2,7 +2,9 @@ package operations
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -88,9 +90,11 @@ type NormalStats struct {
 
 type NormalProg struct {
 	// General parameters:
-	Database   string
-	Collection string
-	SubCommand string
+	Database    string
+	Collection  string
+	View        string
+	ViewDefFile string
+	SubCommand  string
 
 	// Parameters for creation:
 	NumberOfShards    int64
@@ -179,7 +183,7 @@ var (
 	normalSubprograms = map[string]struct{}{"create": {}, "insert": {},
 		"randomRead": {}, "randomUpdate": {}, "randomReplace": {},
 		"createIdx": {}, "dropIdx": {}, "queryOnIdx": {}, "drop": {},
-		"truncate": {}, "dropDatabase": {},
+		"truncate": {}, "dropDatabase": {}, "createView": {}, "dropView": {},
 	}
 	writeConflictStats WriteConflictStats
 )
@@ -188,6 +192,8 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 	return &NormalProg{
 		Database:          GetStringValue(m, "database", "_system"),
 		Collection:        GetStringValue(m, "collection", "batchimport"),
+		View:              GetStringValue(m, "view", "v"),
+		ViewDefFile:       GetStringValue(m, "viewDefFile", "view.json"),
 		Drop:              GetBoolValue(m, "drop", false),
 		SubCommand:        subCmd,
 		NumberOfShards:    GetInt64Value(m, "numberOfShards", 3),
@@ -276,6 +282,57 @@ func (np *NormalProg) Create(cl driver.Client) error {
 	return nil
 }
 
+func (np *NormalProg) CreateView(cl driver.Client) error {
+	start := time.Now()
+	db, err := database.CreateOrGetDatabase(nil, cl, np.Database,
+		&driver.CreateDatabaseOptions{
+			Options: driver.CreateDatabaseDefaultOptions{
+				ReplicationVersion: driver.DatabaseReplicationVersion(np.ReplicationVersion),
+			}})
+	if err != nil {
+		return fmt.Errorf("Could not create/open database %s: %v\n", np.Database, err)
+	}
+	ec, err := db.View(nil, np.View)
+	if err == nil {
+		if !np.Drop {
+			return fmt.Errorf("Found view %s already, setup is already done.", np.View)
+		}
+		err = ec.Remove(nil)
+		if err != nil {
+			return fmt.Errorf("Could not drop view  %s: %v\n", np.View, err)
+		}
+	} else if !driver.IsNotFound(err) {
+		return fmt.Errorf("Error: could not look for view %s: %v\n", np.View, err)
+	}
+
+	// Now create the view, first read the definition:
+	buf, err := ioutil.ReadFile(np.ViewDefFile)
+	if err != nil {
+		return fmt.Errorf("Error: could not read view definition file %s: %v\n", np.ViewDefFile, err)
+	}
+	var viewDef driver.ArangoSearchViewProperties
+	err = json.Unmarshal(buf, &viewDef)
+	if err != nil {
+		return fmt.Errorf("Error: could not parse view definition file %s: %v\n", np.ViewDefFile, err)
+	}
+	var analyzerDef driver.ArangoSearchAnalyzerDefinition
+
+	_, err = db.EnsureAnalyzer(nil, analyzerdef)
+	_, err = db.CreateArangoSearchView(nil, np.View, &viewDef)
+	if err != nil {
+		return fmt.Errorf("Error: could not create view %s with definition from file %s: %v", np.View, np.ViewDefFile, err)
+	}
+	PrintTS(fmt.Sprintf("normal: Database %s and view %s successfully created.\n", np.Database, np.View))
+	metrics.ViewsCreated.Inc()
+	totaltime := time.Now().Sub(start)
+
+	// Report back:
+	np.Stats.Mutex.Lock()
+	np.Stats.Overall = SingleStats(totaltime, float64(time.Second)/float64(totaltime))
+	np.Stats.Mutex.Unlock()
+	return nil
+}
+
 func (np *NormalProg) DoDrop(cl driver.Client) error {
 	start := time.Now()
 	db, err := database.CreateOrGetDatabase(nil, cl, np.Database,
@@ -296,6 +353,35 @@ func (np *NormalProg) DoDrop(cl driver.Client) error {
 	Print("\n")
 	PrintTS(fmt.Sprintf("normal: Database %s found and collection %s successfully dropped (line %d of script).\n", np.Database, np.Collection, np.Stats.StartLine))
 	metrics.CollectionsDropped.Inc()
+	totaltime := time.Now().Sub(start)
+
+	// Report back:
+	np.Stats.Mutex.Lock()
+	np.Stats.Overall = SingleStats(totaltime, float64(time.Second)/float64(totaltime))
+	np.Stats.Mutex.Unlock()
+	return nil
+}
+
+func (np *NormalProg) DropView(cl driver.Client) error {
+	start := time.Now()
+	db, err := database.CreateOrGetDatabase(nil, cl, np.Database,
+		&driver.CreateDatabaseOptions{})
+	if err != nil {
+		return fmt.Errorf("Could not create/open database %s: %v\n", np.Database, err)
+	}
+	ec, err := db.View(nil, np.View)
+	if err == nil {
+		err = ec.Remove(nil)
+		if err != nil {
+			return fmt.Errorf("Could not drop view %s: %v\n", np.View, err)
+		}
+	} else if !driver.IsNotFound(err) {
+		return fmt.Errorf("Error: could not look for view %s: %v\n", np.View, err)
+	}
+
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: Database %s found and view %s successfully dropped (line %d of script).\n", np.Database, np.View, np.Stats.StartLine))
+	metrics.ViewsDropped.Inc()
 	totaltime := time.Now().Sub(start)
 
 	// Report back:
@@ -1191,6 +1277,10 @@ func (np *NormalProg) Execute() error {
 		err = np.RunQueryOnIdx()
 	case "dropDatabase":
 		err = np.DropDatabase(cl)
+	case "createView":
+		err = np.CreateView(cl)
+	case "dropView":
+		err = np.DropView(cl)
 	default:
 		err = nil
 	}

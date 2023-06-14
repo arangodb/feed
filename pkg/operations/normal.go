@@ -90,11 +90,12 @@ type NormalStats struct {
 
 type NormalProg struct {
 	// General parameters:
-	Database    string
-	Collection  string
-	View        string
-	ViewDefFile string
-	SubCommand  string
+	Database         string
+	Collection       string
+	View             string
+	ViewDefFile      string
+	AnalyzersDefFile string
+	SubCommand       string
 
 	// Parameters for creation:
 	NumberOfShards    int64
@@ -194,6 +195,7 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 		Collection:        GetStringValue(m, "collection", "batchimport"),
 		View:              GetStringValue(m, "view", "v"),
 		ViewDefFile:       GetStringValue(m, "viewDefFile", "view.json"),
+		AnalyzersDefFile:  GetStringValue(m, "analyzersDefFile", ""),
 		Drop:              GetBoolValue(m, "drop", false),
 		SubCommand:        subCmd,
 		NumberOfShards:    GetInt64Value(m, "numberOfShards", 3),
@@ -306,6 +308,23 @@ func (np *NormalProg) CreateView(cl driver.Client) error {
 	}
 
 	// Now create the view, first read the definition:
+	if np.AnalyzersDefFile != "" {
+		buf, err := ioutil.ReadFile(np.AnalyzersDefFile)
+		if err != nil {
+			return fmt.Errorf("Error: could not read analyzers definition file %s: %v\n", np.AnalyzersDefFile, err)
+		}
+		var analyzersDefs []driver.ArangoSearchAnalyzerDefinition
+		err = json.Unmarshal(buf, &analyzersDefs)
+		if err != nil {
+			return fmt.Errorf("Error: could not parse analyzers definition file %s: %v\n", np.AnalyzersDefFile, err)
+		}
+		for _, a := range analyzersDefs {
+			_, _, err = db.EnsureAnalyzer(nil, a)
+			if err != nil {
+				return fmt.Errorf("Error: could not create analyzer: %v, error: %v", a, err)
+			}
+		}
+	}
 	buf, err := ioutil.ReadFile(np.ViewDefFile)
 	if err != nil {
 		return fmt.Errorf("Error: could not read view definition file %s: %v\n", np.ViewDefFile, err)
@@ -315,9 +334,7 @@ func (np *NormalProg) CreateView(cl driver.Client) error {
 	if err != nil {
 		return fmt.Errorf("Error: could not parse view definition file %s: %v\n", np.ViewDefFile, err)
 	}
-	var analyzerDef driver.ArangoSearchAnalyzerDefinition
 
-	_, err = db.EnsureAnalyzer(nil, analyzerdef)
 	_, err = db.CreateArangoSearchView(nil, np.View, &viewDef)
 	if err != nil {
 		return fmt.Errorf("Error: could not create view %s with definition from file %s: %v", np.View, np.ViewDefFile, err)

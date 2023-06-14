@@ -35,6 +35,9 @@ type NormalStatsOneThread struct {
 }
 
 func (ns *NormalStatsOneThread) FillInStats(times []time.Duration) {
+	if len(times) == 0 {
+		return
+	}
 	sort.Sort(DurationSlice(times))
 	var sum int64 = 0
 	for _, t := range times {

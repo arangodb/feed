@@ -319,9 +319,11 @@ func (np *NormalProg) CreateView(cl driver.Client) error {
 			return fmt.Errorf("Error: could not parse analyzers definition file %s: %v\n", np.AnalyzersDefFile, err)
 		}
 		for _, a := range analyzersDefs {
-			_, _, err = db.EnsureAnalyzer(nil, a)
+			created, _, err := db.EnsureAnalyzer(nil, a)
 			if err != nil {
 				return fmt.Errorf("Error: could not create analyzer: %v, error: %v", a, err)
+			} else if created {
+        metrics.AnalyzersCreated.Inc()
 			}
 		}
 	}

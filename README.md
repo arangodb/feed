@@ -86,6 +86,9 @@ subcommand.
  - `randomUpdate`: perform updates in documents randomly in parallel
  - `randomReplace`: perform replacements of documents in parallel
  - `dropDatabase`: drop a database
+ - `queryOnIdx`: run an AQL query using an index (including primary index)
+ - `createView`: create a view (and potentially some analyzers)
+ - `dropView`: drop a view
 
 ### Operation cases for `graph`
 
@@ -94,6 +97,8 @@ subcommand.
 
  - `insertvertices`: for graph cases, insert vertex data
  - `insertedges`: for graph cases, insert edge data
+ - `randomTraversal`: for graph cases, run a traversal from a random
+   starting point
 
 
 ## `feedlang` reference
@@ -150,6 +155,12 @@ Possible parameters for usage:
  - `numberOfShards`: number of shards of the collection (default: `3`)
  - `replicationFactor`: replication factor (number of replicas for each
    shard) (default: `3`)
+ - `waitForSync`: boolean flag, if set to true, all write operations on this
+   collections will wait until all data is persisted to disk (default: `false`)
+ - `drop`: boolean flag, if set to true, drops collection if it exists
+   before recreating it (default: `false`)
+ - `replicationVersion`: set replication Version 1 (default) or replication
+   Version 2 (when creating the database)
 
 
 ## Subcommand `drop` (for `normal`)
@@ -223,6 +234,8 @@ Possible parameters for usage:
  - `numberFields`: number of fields the index will cover (default: `1`)
  - `idxName`: user-defined name for the index. Leading and trailing
    quotes are ignored. (default: `"idx" + random number ex. idx123`)
+ - `replicationVersion`: set replication Version 1 (default) or replication
+   Version 2 (when creating the database)
 
 
 ## Subcommand `dropIdx` (for `normal`)
@@ -287,6 +300,8 @@ Possible parameters for usage:
  - `numberFields`: number of payload fields to generate, the randomly
    generated string data is distributed across that many fields called
    `payload0`, `payload1` and so on (default: `1`)
+ - `replicationVersion`: set replication Version 1 (default) or replication
+   Version 2 (when creating the database)
 
 The following are for edge collections to produce random `_from` and
 `_to` values. Do not use them in actual graph insertion commands:
@@ -415,6 +430,144 @@ Possible parameters for usage:
 
 For the documents being created as replacement the same parameters can
 be used as in the `insert` case above.
+
+
+## Subcommand `createView` (for `normal`)
+
+Creates a view (with proper links) and potentially analyzers.
+
+Example of usage:
+
+```
+normal createView database=xyz viewDefFile=view.json analyzersDefFile=analyzers.json view=v drop=true
+```
+
+Possible parameters for usage:
+
+ - `database`: name of the database where the collection will be created
+   (default: `_system`)
+ - `replicationVersion`: set replication Version 1 (default) or replication
+   Version 2 (when creating the database)
+ - `view`: name of view to create (default: `v`)
+ - `drop`: boolean flag, if set to true, drops view if it exists
+   before recreating it (default: `false`)
+ - `viewDefFile`: name of file with a JSON description of the view, see
+   below for an example, in particular, this contains the collections
+   for which links are generated
+ - `analyzersDefFile`: name of file with a JSON description of the
+   analyzers, which ought to be created, see below for an example,
+   analyzers are created before the view, so that they can immediately
+   be used in the view definition
+
+Here is an example of a JSON file to create some analyzers, note in
+particular that it needs to be an array of objects, one for each
+analyzer:
+
+```json
+[
+  {
+    "name": "segmentation",
+    "type": "segmentation",
+    "properties": {
+      "case": "lower",
+      "break": "alpha"
+    },
+    "features": [
+      "frequency",
+      "position",
+      "norm"
+    ]
+  },
+  {
+    "name": "identity",
+    "type": "identity",
+    "properties": {},
+    "features": [
+      "frequency",
+      "norm"
+    ]
+  },
+  {
+    "name": "text_en",
+    "type": "text",
+    "properties": {
+      "locale": "en",
+      "case": "lower",
+      "stopwords": [],
+      "accent": false,
+      "stemming": true
+    },
+    "features": [
+      "frequency",
+      "position",
+      "norm"
+    ]
+  }
+]
+```
+
+Here is an example for a view definition file:
+
+```json
+{
+  "links": {
+    "c": {
+      "analyzers": [
+        "identity"
+      ],
+      "collectionName": "transactions",
+      "fields": {
+        "words" : {
+          "analyzers" : [
+            "text_en",
+            "identity"
+          ],
+          "cache" : true
+        }
+      },
+      "inBackground": true,
+      "includeAllFields": false,
+      "name": "idx_1765991063252631552",
+      "primaryKeyCache": true,
+      "primarySort": [],
+      "primarySortCompression": "lz4",
+      "storeValues": "none",
+      "trackListPositions": false,
+      "type": "arangosearch",
+      "version": 1
+    }
+  },
+  "storedValues": [
+    {
+      "fields": [
+        "_key",
+        "words"
+      ],
+      "compression": "lz4",
+      "cache": true
+    }
+  ]
+}
+```
+
+## Subcommand `dropView` (for `normal`)
+
+Drops a view.
+
+Example of usage:
+
+```
+normal dropView database=xyz view=v
+```
+
+Possible parameters for usage:
+
+ - `database`: name of the database where the collection will be dropped
+   (default: `_system`)
+ - `view`: name of view to drop, note that associated links are dropped
+   as well, but analyzers are not, since we do not know which analyzers
+   have been created alongside this view and which have been there from
+   before (default: `v`)
 
 
 ## Subcommand `create` (for `graph`)

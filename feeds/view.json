@@ -1,0 +1,39 @@
+{
+  "links": {
+    "c": {
+      "analyzers": [
+        "identity"
+      ],
+      "collectionName": "transactions",
+      "fields": {
+        "words" : {
+          "analyzers" : [
+            "text_en",
+            "identity"
+          ],
+          "cache" : true
+        }
+      },
+      "inBackground": true,
+      "includeAllFields": false,
+      "name": "idx_1765991063252631552",
+      "primaryKeyCache": true,
+      "primarySort": [],
+      "primarySortCompression": "lz4",
+      "storeValues": "none",
+      "trackListPositions": false,
+      "type": "arangosearch",
+      "version": 1
+    }
+  },
+  "storedValues": [
+    {
+      "fields": [
+        "_key",
+        "words"
+      ],
+      "compression": "lz4",
+      "cache": true
+    }
+  ]
+}

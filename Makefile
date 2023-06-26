@@ -1,2 +1,2 @@
 all:
-	go build
+	go build -tags osusergo,netgo

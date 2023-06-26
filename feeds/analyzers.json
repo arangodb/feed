@@ -1,0 +1,40 @@
+[
+  {
+    "name": "segmentation",
+    "type": "segmentation",
+    "properties": {
+      "case": "lower",
+      "break": "alpha"
+    },
+    "features": [
+      "frequency",
+      "position",
+      "norm"
+    ]
+  },
+  {
+    "name": "identity",
+    "type": "identity",
+    "properties": {},
+    "features": [
+      "frequency",
+      "norm"
+    ]
+  },
+  {
+    "name": "text_en",
+    "type": "text",
+    "properties": {
+      "locale": "en",
+      "case": "lower",
+      "stopwords": [],
+      "accent": false,
+      "stemming": true
+    },
+    "features": [
+      "frequency",
+      "position",
+      "norm"
+    ]
+  }
+]

@@ -323,7 +323,7 @@ func (np *NormalProg) CreateView(cl driver.Client) error {
 			if err != nil {
 				return fmt.Errorf("Error: could not create analyzer: %v, error: %v", a, err)
 			} else if created {
-        metrics.AnalyzersCreated.Inc()
+				metrics.AnalyzersCreated.Inc()
 			}
 		}
 	}
@@ -675,14 +675,14 @@ func createIdx(np *NormalProg) error {
 
 	ctx := context.Background()
 
-	idxTypes := make([]string, 0, np.LoadPerThread)
+	idxTypes := make([]string, 0, 2)
 
 	idxTypes = append(idxTypes, "persistent")
 	if np.DocConfig.WithGeo {
 		idxTypes = append(idxTypes, "geo")
 	}
 
-	idxFields := make([]string, 0, 17) // Paylaod from 1 to F + Words = 17
+	idxFields := make([]string, 0, 17) // Payload from 1 to F + Words = 17
 
 	for i := int64(1); i <= np.DocConfig.NumberFields; i++ {
 		idxFields = append(idxFields, "payload"+fmt.Sprintf("%x", i))

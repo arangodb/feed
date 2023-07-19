@@ -287,6 +287,9 @@ Possible parameters for usage:
  - `numberFields`: number of payload fields to generate, the randomly
    generated string data is distributed across that many fields called
    `payload0`, `payload1` and so on (default: `1`)
+ - `useAql`: If set to `true`, any CRUD operation (create, replace,
+   update, delete) will be executed through AQL queries instead of 
+   using the regular document HTTP API (default: `false`)
 
 The following are for edge collections to produce random `_from` and
 `_to` values. Do not use them in actual graph insertion commands:

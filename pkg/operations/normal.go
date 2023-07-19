@@ -17,7 +17,6 @@ import (
 	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/feed/pkg/metrics"
 	"github.com/arangodb/go-driver"
-	"github.com/pkg/errors"
 )
 
 type NormalStatsOneThread struct {
@@ -96,6 +95,7 @@ type NormalProg struct {
 	// Parameters for creation:
 	NumberOfShards    int64
 	ReplicationFactor int64
+	OneShard          bool
 	Drop              bool
 
 	// Parameters for batch import:
@@ -194,6 +194,7 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 		SubCommand:        subCmd,
 		NumberOfShards:    GetInt64Value(m, "numberOfShards", 3),
 		ReplicationFactor: GetInt64Value(m, "replicationFactor", 3),
+		OneShard:          GetBoolValue(m, "oneShard", false),
 		DocConfig: datagen.DocumentConfig{
 			SizePerDoc:   GetInt64Value(m, "documentSize", 128),
 			Size:         GetInt64Value(m, "size", 16*1024*1024*1024),
@@ -237,11 +238,16 @@ func NewNormalProg(args []string, line int) (feedlang.Program, error) {
 
 func (np *NormalProg) Create(cl driver.Client) error {
 	start := time.Now()
+	dbCreationOptions := driver.CreateDatabaseDefaultOptions{
+		ReplicationVersion: driver.DatabaseReplicationVersion(np.ReplicationVersion),
+	}
+	if np.OneShard {
+		dbCreationOptions.Sharding = "single"
+	}
+
 	db, err := database.CreateOrGetDatabase(nil, cl, np.Database,
 		&driver.CreateDatabaseOptions{
-			Options: driver.CreateDatabaseDefaultOptions{
-				ReplicationVersion: driver.DatabaseReplicationVersion(np.ReplicationVersion),
-			}})
+			Options: dbCreationOptions})
 	if err != nil {
 		return fmt.Errorf("Could not create/open database %s: %v\n", np.Database, err)
 	}
@@ -981,7 +987,18 @@ func readRandomlyInParallel(np *NormalProg) error {
 
 			var doc2 datagen.Doc
 			start := time.Now()
-			_, err := coll.ReadDocument(ctx, doc.Key, &doc2)
+
+			var err error
+			if np.UseAql {
+				query := "RETURN DOCUMENT(@myDocumentID)"
+				bindVars := map[string]interface{}{
+					"myDocumentID": coll.Name() + "/" + doc.Key,
+				}
+				_, err = db.Query(ctx, query, bindVars)
+			} else {
+				_, err = coll.ReadDocument(ctx, doc.Key, &doc2)
+			}
+
 			if err != nil {
 				return fmt.Errorf("Can not read document with _key %s %v\n", doc.Key, err)
 			}
@@ -1079,7 +1096,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 				// Reason: Right now all generated docs land in the same document arary `docs`. If we want to allow
 				// creation via AQL here as well, we need to split the docs array by their collection names and/or
 				// modify the query in the `np.UseAql` case.
-				return errors.Errorf("Currently not supported to set useAql and addFromTo to `true` at the same time.")
+				return fmt.Errorf("currently it is not supported to set useAql and addFromTo to `true` at the same time")
 			}
 			if np.UseAql {
 				query := "FOR d IN @docs INSERT d INTO " + insertCollection.Name()

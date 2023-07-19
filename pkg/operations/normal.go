@@ -1036,7 +1036,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 			return fmt.Errorf("Can not get database: %s", np.Database)
 		}
 
-		edges, err := db.Collection(nil, np.Collection)
+		insertCollection, err := db.Collection(nil, np.Collection)
 		if err != nil {
 			PrintTS(fmt.Sprintf("writeSomeBatches: could not open `%s` collection: %v\n", np.Collection, err))
 			return err
@@ -1075,14 +1075,13 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 
 			var err error
 			if np.UseAql {
-				collectionName := edges.Name()
-				query := "FOR d IN @docs INSERT d INTO " + collectionName
+				query := "FOR d IN @docs INSERT d INTO " + insertCollection.Name()
 				bindVars := map[string]interface{}{
 					"docs": docs,
 				}
 				_, err = db.Query(ctx, query, bindVars)
 			} else {
-				_, _, err = edges.CreateDocuments(ctx, docs)
+				_, _, err = insertCollection.CreateDocuments(ctx, docs)
 			}
 
 			cancel()
@@ -1097,7 +1096,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 						PrintTS(fmt.Sprintf("normal: %s Need retry for id %d: %d of %d.\n", time.Now(), id, i, np.Retries))
 					}
 					ctx, cancel = context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
-					_, _, err = edges.CreateDocuments(ctx, docs)
+					_, _, err = insertCollection.CreateDocuments(ctx, docs)
 					cancel()
 					if err == nil {
 						if config.Verbose {

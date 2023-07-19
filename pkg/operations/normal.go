@@ -122,6 +122,7 @@ type NormalProg struct {
 	// with smart graphs, we add a random smart graph attribute if the Smart
 	// flag is set.
 	AddFromTo      bool
+	UseAql         bool
 	Smart          bool
 	VertexCollName string
 
@@ -210,6 +211,7 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 		Timeout:            GetInt64Value(m, "timeout", 3600),
 		Retries:            GetInt64Value(m, "retries", 0),
 		AddFromTo:          GetBoolValue(m, "addFromTo", false),
+		UseAql:             GetBoolValue(m, "useAql", false),
 		Smart:              GetBoolValue(m, "smart", false),
 		WaitForSync:        GetBoolValue(m, "waitForSync", false),
 		ReplicationVersion: GetStringValue(m, "replicationVersion", ""),
@@ -1070,7 +1072,19 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 				docs = append(docs, doc)
 			}
 			ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
-			_, _, err := edges.CreateDocuments(ctx, docs)
+
+			var err error
+			if np.UseAql {
+				collectionName := edges.Name()
+				query := "FOR d IN @docs INSERT d INTO " + collectionName
+				bindVars := map[string]interface{}{
+					"docs": docs,
+				}
+				_, err = db.Query(ctx, query, bindVars)
+			} else {
+				_, _, err = edges.CreateDocuments(ctx, docs)
+			}
+
 			cancel()
 			if err != nil {
 				PrintTS(fmt.Sprintf("writeSomeBatches: could not write batch: %v, id: %d", err, id))

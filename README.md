@@ -289,7 +289,8 @@ Possible parameters for usage:
    `payload0`, `payload1` and so on (default: `1`)
  - `useAql`: If set to `true`, any CRUD operation (create, replace,
    update, delete) will be executed through AQL queries instead of 
-   using the regular document HTTP API (default: `false`)
+   using the regular document HTTP API. Can only be used if `addFromTo`
+   is not set to `true`. (default: `false`)
 
 The following are for edge collections to produce random `_from` and
 `_to` values. Do not use them in actual graph insertion commands:

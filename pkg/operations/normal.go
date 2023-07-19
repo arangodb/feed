@@ -17,6 +17,7 @@ import (
 	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/feed/pkg/metrics"
 	"github.com/arangodb/go-driver"
+	"github.com/pkg/errors"
 )
 
 type NormalStatsOneThread struct {
@@ -1074,6 +1075,12 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 			ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
 
 			var err error
+			if np.UseAql && np.AddFromTo {
+				// Reason: Right now all generated docs land in the same document arary `docs`. If we want to allow
+				// creation via AQL here as well, we need to split the docs array by their collection names and/or
+				// modify the query in the `np.UseAql` case.
+				return errors.Errorf("Currently not supported to set useAql and addFromTo to `true` at the same time.")
+			}
 			if np.UseAql {
 				query := "FOR d IN @docs INSERT d INTO " + insertCollection.Name()
 				bindVars := map[string]interface{}{

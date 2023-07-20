@@ -774,7 +774,36 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 				docs = append(docs, doc)
 			}
 			start := time.Now()
-			_, errSlice, err := coll.ReplaceDocuments(ctx, keys, docs)
+
+			var err error
+			var errSlice driver.ErrorSlice
+			var cursor driver.Cursor
+			if np.UseAql {
+				query := `
+				  LET amountOfEntries = COUNT(@keys) - 1
+				  FOR position IN 0..(amountOfEntries)
+				    LET key = NTH(@keys, position)
+				    LET doc = NTH(@docs, position)
+				    REPLACE key WITH doc IN @@collectionName
+				`
+
+				bindVars := map[string]interface{}{
+					"@collectionName": coll.Name(),
+					"docs":            docs,
+					"keys":            keys,
+				}
+
+				cursor, err = db.Query(ctx, query, bindVars)
+				if err != nil {
+					return fmt.Errorf("QueryError: Can not replace documents %v\n", err)
+				} else {
+					PrintTS(fmt.Sprintf("QuerySuccess!.\n\n"))
+				}
+				defer cursor.Close()
+			} else {
+				_, errSlice, err = coll.ReplaceDocuments(ctx, keys, docs)
+			}
+
 			if err != nil {
 				// if there's a write/write conflict, we ignore it, but count for
 				// statistics, err is not supposed to return a write conflict, only

@@ -264,13 +264,18 @@ func (np *NormalProg) Create(cl driver.Client) error {
 		return fmt.Errorf("Error: could not look for collection %s: %v\n", np.Collection, err)
 	}
 
-	// Now create the batchimport collection:
-	_, err = db.CreateCollection(nil, np.Collection, &driver.CreateCollectionOptions{
+	collectionCreateOptions := &driver.CreateCollectionOptions{
 		Type:              driver.CollectionTypeDocument,
-		NumberOfShards:    int(np.NumberOfShards),
 		ReplicationFactor: int(np.ReplicationFactor),
 		WaitForSync:       np.WaitForSync,
-	})
+	}
+
+	if !np.OneShard {
+		collectionCreateOptions.NumberOfShards = int(np.NumberOfShards)
+	}
+
+	// Now create the batchimport collection:
+	_, err = db.CreateCollection(nil, np.Collection, collectionCreateOptions)
 	if err != nil {
 		return fmt.Errorf("Error: could not create collection %s: %v", np.Collection, err)
 	}

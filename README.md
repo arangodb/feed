@@ -304,6 +304,8 @@ Possible parameters for usage:
    update, delete) will be executed through AQL queries instead of 
    using the regular document HTTP API. Can only be used if `addFromTo`
    is not set to `true`. (default: `false`)
+ - `oneShard`: If set to `true` the database will be created as a one
+   shard database (default `false`)
  - `replicationVersion`: set replication Version 1 (default) or replication
    Version 2 (when creating the database)
 

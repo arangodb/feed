@@ -1,6 +1,6 @@
 [
-  normal create database=OneShardDB collection=ParallelAqlInsert oneShard=true drop=true
-  normal insert database=OneShardDB collection=ParallelAqlInsert parallelism=32 size=1M batchSize=10 documentSize=100 useAql=true
-  normal randomRead database=OneShardDB collection=ParallelAqlInsert parallelism=32 loadPerThread=100 useAql=true
-  normal randomReplace database=OneShardDB collection=ParallelAqlInsert parallelism=1 loadPerThread=20 useAql=true
+  normal create database=OneShardDB collection=ParallelAqlInsert oneShard=true drop=true replicationFactor=2
+  normal insert database=OneShardDB collection=ParallelAqlInsert parallelism=64 size=100M batchSize=10 documentSize=100 useAql=true
+  normal randomRead database=OneShardDB collection=ParallelAqlInsert parallelism=64 loadPerThread=100 useAql=true
+  normal randomReplace database=OneShardDB collection=ParallelAqlInsert parallelism=64 batchSize=100 loadPerThread=100 useAql=true
 ]

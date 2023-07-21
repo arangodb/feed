@@ -800,11 +800,20 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 
 				cursor, err = db.Query(ctx, query, bindVars)
 				if err != nil {
-					return fmt.Errorf("QueryError: Can not replace documents %v\n", err)
+					errorAsString := err.Error()
+					if strings.Contains(errorAsString, "write-write conflict") {
+						writeConflicts++
+					} else if strings.Contains(errorAsString, "timeout waiting to lock key") {
+						// TODO: Track those errors in another variable
+						writeConflicts++
+					} else {
+						return fmt.Errorf("Unhandled query error during randomReplace documents %v\n", err)
+					}
 				} else {
 					PrintTS(fmt.Sprintf("QuerySuccess!.\n\n"))
+					defer cursor.Close()
 				}
-				defer cursor.Close()
+
 			} else {
 				_, errSlice, err = coll.ReplaceDocuments(ctx, keys, docs)
 			}

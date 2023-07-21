@@ -27,23 +27,7 @@ var (
 		"Tesco",
 		"Morrison",
 	}
-
-	longWordList = []string{}
 )
-
-func FillLongWordList(nr int, source *rand.Rand) {
-	longWordList = make([]string, 0, 5000)
-	for i := 0; i < nr; i++ {
-		len := source.Intn(10) + 5
-		longWordList = append(longWordList, MakeRandomString(len, source))
-	}
-}
-
-func init() {
-	source := rand.NewSource(int64(0xdeadbeef))
-	rand := rand.New(source)
-	FillLongWordList(5000, rand)
-}
 
 type Point []float64
 
@@ -148,11 +132,11 @@ func makeRandomWords(nr int, source *rand.Rand) string {
 		if i > 1 {
 			b = append(b, ' ')
 		}
-		r := source.Intn(10)
-		if r == 0 {
+		r := source.Intn(100)
+		if r < 3 {
 			b = append(b, []byte(shortWordList[source.Int()%len(shortWordList)])...)
-		} else if r <= 8 {
-			b = append(b, []byte(longWordList[source.Int()%len(longWordList)])...)
+		} else if r < 97 {
+			b = append(b, []byte(LongWordList[source.Int()%len(LongWordList)])...)
 		} else {
 			len := source.Intn(10) + 5
 			b = append(b, []byte(MakeRandomString(len, source))...)

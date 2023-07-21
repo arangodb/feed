@@ -332,7 +332,9 @@ func Parse(lines []string) (Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	if pos < len(lines) {
+	// Get one more line, if there is anything left, we error out:
+	_, err = getLine(lines, &pos)
+	if pos < len(lines) || err == nil {
 		return nil, fmt.Errorf("Parsing ended before end of lines in line %d (out of %d lines)", pos+1, len(lines))
 	}
 	return prog, nil

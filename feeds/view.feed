@@ -1,0 +1,6 @@
+[
+normal create database=xyz collection=c drop=true
+normal createView database=xyz viewDefFile=feeds/view.json analyzersDefFile=feeds/analyzers.json view=v drop=true
+normal insert database=xyz collection=c size=1G documentSize=300 withGeo=true withWords=10 parallelism=16 numberFields=5
+normal randomReplace database=xyz collection=c parallelism=16 loadPerThread=100 batchSize=1000
+]

@@ -27,6 +27,14 @@ func CheckInt64Parameter(value *int64, name string, input string) error {
 	var mult int64 = 1
 	l := len(input)
 	if l > 0 {
+		// Accept (and ignore) a trailing 'b' or 'B' to accept GB and TB etc.
+		if input[l-1] == 'B' || input[l-1] == 'b' {
+			input = input[0 : l-1]
+			if len(input) == 0 {
+				*value = 0
+				return nil
+			}
+		}
 		if input[l-1] == 'G' || input[l-1] == 'g' {
 			input = input[0 : l-1]
 			mult = 1024 * 1024 * 1024

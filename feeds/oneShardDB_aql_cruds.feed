@@ -3,4 +3,5 @@
   normal insert database=OneShardDB collection=ParallelAqlInsert parallelism=64 size=100M batchSize=10 documentSize=100 useAql=true
   normal randomRead database=OneShardDB collection=ParallelAqlInsert parallelism=64 loadPerThread=100 useAql=true
   normal randomReplace database=OneShardDB collection=ParallelAqlInsert parallelism=64 batchSize=100 loadPerThread=100 useAql=true
+  normal randomUpdate database=OneShardDB collection=ParallelAqlInsert parallelism=64 batchSize=100 loadPerThread=100 useAql=true
 ]

@@ -827,7 +827,6 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 				} else {
 					defer cursor.Close()
 				}
-
 			} else {
 				_, errSlice, err := coll.ReplaceDocuments(ctx, keys, docs)
 				if err != nil {
@@ -927,6 +926,7 @@ func updateRandomlyInParallel(np *NormalProg) error {
 		times := make([]time.Duration, 0, np.LoadPerThread)
 		cyclestart := time.Now()
 		writeConflicts := int64(0)
+		lockTimeouts := int64(0)
 
 		// It is crucial that every go routine has its own random source, otherwise
 		// we create a lot of contention.
@@ -948,25 +948,56 @@ func updateRandomlyInParallel(np *NormalProg) error {
 
 			start := time.Now()
 
-			_, errSlice, err := coll.UpdateDocuments(ctx, keys, docs)
-			if err != nil {
-				//if there's a write/write conflict, we ignore it, but count for statistics, err is not supposed to return a write conflict, only the ErrorSlice, but doesn't hurt performance much to test it
-				if driver.IsPreconditionFailed(err) {
-					writeConflicts++
-				} else {
-					stats.NumUpdateWriteConflicts += writeConflicts
-					return fmt.Errorf("Can not update documents %v\n", err)
+			if np.UseAql {
+				query := `
+				  LET amountOfEntries = COUNT(@keys) - 1
+				  FOR position IN 0..(amountOfEntries)
+				    LET key = NTH(@keys, position)
+				    LET doc = NTH(@docs, position)
+				    UPDATE key WITH doc IN @@collectionName
+				`
+
+				bindVars := map[string]interface{}{
+					"@collectionName": coll.Name(),
+					"docs":            docs,
+					"keys":            keys,
 				}
-			}
-			if errSlice != nil {
-				for _, err2 := range errSlice {
-					if err2 != nil {
-						if driver.IsPreconditionFailed(err2) {
-							writeConflicts++
+
+				cursor, err := db.Query(ctx, query, bindVars)
+				if err != nil {
+					errorAsString := err.Error()
+					if strings.Contains(errorAsString, "write-write conflict") {
+						writeConflicts++
+					} else if strings.Contains(errorAsString, "timeout waiting to lock key") {
+						lockTimeouts++
+					} else {
+						return fmt.Errorf("Unhandled query error during randomReplace documents %v\n", err)
+					}
+				} else {
+					defer cursor.Close()
+				}
+			} else {
+				_, errSlice, err := coll.UpdateDocuments(ctx, keys, docs)
+				if err != nil {
+					//if there's a write/write conflict, we ignore it, but count for statistics, err is not supposed to return a write conflict, only the ErrorSlice, but doesn't hurt performance much to test it
+					if driver.IsPreconditionFailed(err) {
+						writeConflicts++
+					} else {
+						stats.NumUpdateWriteConflicts += writeConflicts
+						return fmt.Errorf("Can not update documents %v\n", err)
+					}
+				}
+				if errSlice != nil {
+					for _, err2 := range errSlice {
+						if err2 != nil {
+							if driver.IsPreconditionFailed(err2) {
+								writeConflicts++
+							}
 						}
 					}
 				}
 			}
+
 			metrics.BatchesUpdated.Add(float64(batchSizeLimit))
 			metrics.BatchesUpdated.Inc()
 			times = append(times, time.Now().Sub(start))
@@ -976,6 +1007,8 @@ func updateRandomlyInParallel(np *NormalProg) error {
 		stats.TotalTime = totaltime
 		stats.NumberOps = np.LoadPerThread * batchSizeLimit
 		stats.OpsPerSecond = updatespersec
+		stats.NumReplaceWriteConflicts += writeConflicts
+		stats.NumReplaceLockTimeouts += lockTimeouts
 		stats.FillInStats(times)
 		PrintStatistics(&stats, fmt.Sprintf("normal (update):\n  Times for updating %d batches (line %d of script).\n  docs per second in this go routine: %f", np.LoadPerThread, np.Stats.StartLine, updatespersec))
 
@@ -983,7 +1016,6 @@ func updateRandomlyInParallel(np *NormalProg) error {
 		np.Stats.Mutex.Lock()
 		np.Stats.Threads = append(np.Stats.Threads, stats)
 		np.Stats.Mutex.Unlock()
-		stats.NumReplaceWriteConflicts += writeConflicts
 		return nil
 	},
 

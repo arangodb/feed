@@ -30,6 +30,7 @@ type NormalStatsOneThread struct {
 	NumberOps                int64         `json:"numberOps"`
 	TotalTime                time.Duration `json:"totalTime"`
 	NumReplaceWriteConflicts int64         `json:"numberReplaceWriteConflicts"`
+	NumReplaceLockTimeouts   int64         `json:"numberReplaceLockTimeouts"`
 	NumUpdateWriteConflicts  int64         `json:"numberUpdateWriteConflicts"`
 	HaveError                bool          `json:"haveError"`
 }
@@ -68,6 +69,7 @@ func AggregateStats(stats []NormalStatsOneThread, totalTime time.Duration) Norma
 		t.NumberOps += s.NumberOps // sum here
 		t.NumUpdateWriteConflicts += s.NumUpdateWriteConflicts
 		t.NumReplaceWriteConflicts += s.NumReplaceWriteConflicts
+		t.NumReplaceLockTimeouts += s.NumReplaceLockTimeouts
 	}
 	t.Average /= time.Duration(len)
 	t.Median /= time.Duration(len)
@@ -138,6 +140,7 @@ type NormalProg struct {
 type WriteConflictStats struct {
 	numUpdateWriteConflicts  int64
 	numReplaceWriteConflicts int64
+	numReplaceLockTimeouts   int64
 }
 
 func (n *NormalProg) Lines() (int, int) {
@@ -149,7 +152,7 @@ func (n *NormalProg) SetSource(lines []string) {
 }
 
 func (s *NormalStatsOneThread) StatsToStrings() []string {
-	return []string{
+	resultString := []string{
 		fmt.Sprintf("  NumberOps : %d\n", s.NumberOps),
 		fmt.Sprintf("  OpsPerSec : %f\n", s.OpsPerSecond),
 		fmt.Sprintf("  Median    : %v\n", s.Median),
@@ -159,6 +162,21 @@ func (s *NormalStatsOneThread) StatsToStrings() []string {
 		fmt.Sprintf("  Minimum   : %v\n", s.Minimum),
 		fmt.Sprintf("  Maximum   : %v\n", s.Maximum),
 	}
+
+	if s.NumReplaceWriteConflicts > 0 || s.NumReplaceLockTimeouts > 0 || s.NumUpdateWriteConflicts > 0 {
+		resultString = append(resultString, fmt.Sprintf("  Errors    : %t\n", true))
+		if s.NumReplaceWriteConflicts > 0 {
+			resultString = append(resultString, fmt.Sprintf("  - NumReplaceWriteConflicts : %d\n", s.NumReplaceWriteConflicts))
+		}
+		if s.NumReplaceLockTimeouts > 0 {
+			resultString = append(resultString, fmt.Sprintf("  - NumReplaceLockTimeouts   : %d\n", s.NumReplaceLockTimeouts))
+		}
+		if s.NumUpdateWriteConflicts > 0 {
+			resultString = append(resultString, fmt.Sprintf("  - NumUpdateWriteConflicts  : %d\n", s.NumUpdateWriteConflicts))
+		}
+	}
+
+	return resultString
 }
 
 func (n *NormalProg) StatsOutput() []string {
@@ -759,6 +777,7 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		cyclestart := time.Now()
 
 		writeConflicts := int64(0)
+		lockTimeouts := int64(0)
 
 		// It is crucial that every go routine has its own random source, otherwise
 		// we create a lot of contention.
@@ -780,9 +799,6 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 			}
 			start := time.Now()
 
-			var err error
-			var errSlice driver.ErrorSlice
-			var cursor driver.Cursor
 			if np.UseAql {
 				query := `
 				  LET amountOfEntries = COUNT(@keys) - 1
@@ -798,46 +814,44 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 					"keys":            keys,
 				}
 
-				cursor, err = db.Query(ctx, query, bindVars)
+				cursor, err := db.Query(ctx, query, bindVars)
 				if err != nil {
 					errorAsString := err.Error()
 					if strings.Contains(errorAsString, "write-write conflict") {
 						writeConflicts++
 					} else if strings.Contains(errorAsString, "timeout waiting to lock key") {
-						// TODO: Track those errors in another variable
-						writeConflicts++
+						lockTimeouts++
 					} else {
 						return fmt.Errorf("Unhandled query error during randomReplace documents %v\n", err)
 					}
 				} else {
-					PrintTS(fmt.Sprintf("QuerySuccess!.\n\n"))
 					defer cursor.Close()
 				}
 
 			} else {
-				_, errSlice, err = coll.ReplaceDocuments(ctx, keys, docs)
-			}
-
-			if err != nil {
-				// if there's a write/write conflict, we ignore it, but count for
-				// statistics, err is not supposed to return a write conflict, only
-				// the ErrorSlice, but doesn't hurt performance much to test it
-				if driver.IsPreconditionFailed(err) {
-					writeConflicts++
-				} else {
-					stats.NumReplaceWriteConflicts += writeConflicts
-					return fmt.Errorf("Can not replace documents %v\n", err)
+				_, errSlice, err := coll.ReplaceDocuments(ctx, keys, docs)
+				if err != nil {
+					// if there's a write/write conflict, we ignore it, but count for
+					// statistics, err is not supposed to return a write conflict, only
+					// the ErrorSlice, but doesn't hurt performance much to test it
+					if driver.IsPreconditionFailed(err) {
+						writeConflicts++
+					} else {
+						stats.NumReplaceWriteConflicts += writeConflicts
+						return fmt.Errorf("Can not replace documents %v\n", err)
+					}
 				}
-			}
-			if errSlice != nil {
-				for _, err2 := range errSlice {
-					if err2 != nil {
-						if driver.IsPreconditionFailed(err2) {
-							writeConflicts++
+				if errSlice != nil {
+					for _, err2 := range errSlice {
+						if err2 != nil {
+							if driver.IsPreconditionFailed(err2) {
+								writeConflicts++
+							}
 						}
 					}
 				}
 			}
+
 			metrics.DocumentsReplaced.Add(float64(batchSizeLimit))
 			metrics.BatchesReplaced.Inc()
 
@@ -848,6 +862,8 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		stats.TotalTime = totaltime
 		stats.NumberOps = np.LoadPerThread * batchSizeLimit
 		stats.OpsPerSecond = replacespersec
+		stats.NumReplaceWriteConflicts += writeConflicts
+		stats.NumReplaceLockTimeouts += lockTimeouts
 		stats.FillInStats(times)
 		PrintStatistics(&stats, fmt.Sprintf("normal (replace):\n  Times for replacing %d batches (line %d of script).\n  docs per second in this go routine: %f", np.Stats.StartLine, np.LoadPerThread, replacespersec))
 
@@ -855,7 +871,6 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		np.Stats.Mutex.Lock()
 		np.Stats.Threads = append(np.Stats.Threads, stats)
 		np.Stats.Mutex.Unlock()
-		stats.NumReplaceWriteConflicts += writeConflicts
 		return nil
 	}, func(totaltime time.Duration, haveError bool) error {
 		// Here, we aggregate the data from all threads and report for the

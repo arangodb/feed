@@ -933,7 +933,7 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 						return fmt.Errorf("Unhandled query error during randomReplace documents %v\n", err)
 					}
 				} else {
-					defer cursor.Close()
+					cursor.Close()
 				}
 			} else {
 				_, errSlice, err := coll.ReplaceDocuments(ctx, keys, docs)
@@ -1082,7 +1082,7 @@ func updateRandomlyInParallel(np *NormalProg) error {
 						return fmt.Errorf("Unhandled query error during randomReplace documents %v\n", err)
 					}
 				} else {
-					defer cursor.Close()
+					cursor.Close()
 				}
 			} else {
 				_, errSlice, err := coll.UpdateDocuments(ctx, keys, docs)

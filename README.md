@@ -300,6 +300,12 @@ Possible parameters for usage:
  - `numberFields`: number of payload fields to generate, the randomly
    generated string data is distributed across that many fields called
    `payload0`, `payload1` and so on (default: `1`)
+ - `useAql`: If set to `true`, any CRUD operation (create, replace,
+   update, delete) will be executed through AQL queries instead of 
+   using the regular document HTTP API. Can only be used if `addFromTo`
+   is not set to `true`. (default: `false`)
+ - `oneShard`: If set to `true` the database will be created as a one
+   shard database (default `false`)
  - `replicationVersion`: set replication Version 1 (default) or replication
    Version 2 (when creating the database)
 

@@ -32,6 +32,7 @@ type NormalStatsOneThread struct {
 	NumberOps                int64         `json:"numberOps"`
 	TotalTime                time.Duration `json:"totalTime"`
 	NumReplaceWriteConflicts int64         `json:"numberReplaceWriteConflicts"`
+	NumReplaceLockTimeouts   int64         `json:"numberReplaceLockTimeouts"`
 	NumUpdateWriteConflicts  int64         `json:"numberUpdateWriteConflicts"`
 	HaveError                bool          `json:"haveError"`
 }
@@ -73,6 +74,7 @@ func AggregateStats(stats []NormalStatsOneThread, totalTime time.Duration) Norma
 		t.NumberOps += s.NumberOps // sum here
 		t.NumUpdateWriteConflicts += s.NumUpdateWriteConflicts
 		t.NumReplaceWriteConflicts += s.NumReplaceWriteConflicts
+		t.NumReplaceLockTimeouts += s.NumReplaceLockTimeouts
 	}
 	t.Average /= time.Duration(len)
 	t.Median /= time.Duration(len)
@@ -103,6 +105,7 @@ type NormalProg struct {
 	// Parameters for creation:
 	NumberOfShards    int64
 	ReplicationFactor int64
+	OneShard          bool
 	Drop              bool
 
 	// Parameters for batch import:
@@ -130,6 +133,7 @@ type NormalProg struct {
 	// with smart graphs, we add a random smart graph attribute if the Smart
 	// flag is set.
 	AddFromTo      bool
+	UseAql         bool
 	Smart          bool
 	VertexCollName string
 
@@ -144,6 +148,7 @@ type NormalProg struct {
 type WriteConflictStats struct {
 	numUpdateWriteConflicts  int64
 	numReplaceWriteConflicts int64
+	numReplaceLockTimeouts   int64
 }
 
 func (n *NormalProg) Lines() (int, int) {
@@ -155,7 +160,7 @@ func (n *NormalProg) SetSource(lines []string) {
 }
 
 func (s *NormalStatsOneThread) StatsToStrings() []string {
-	return []string{
+	resultString := []string{
 		fmt.Sprintf("  NumberOps : %d\n", s.NumberOps),
 		fmt.Sprintf("  OpsPerSec : %f\n", s.OpsPerSecond),
 		fmt.Sprintf("  Median    : %v\n", s.Median),
@@ -165,6 +170,21 @@ func (s *NormalStatsOneThread) StatsToStrings() []string {
 		fmt.Sprintf("  Minimum   : %v\n", s.Minimum),
 		fmt.Sprintf("  Maximum   : %v\n", s.Maximum),
 	}
+
+	if s.NumReplaceWriteConflicts > 0 || s.NumReplaceLockTimeouts > 0 || s.NumUpdateWriteConflicts > 0 {
+		resultString = append(resultString, fmt.Sprintf("  Errors    : %t\n", true))
+		if s.NumReplaceWriteConflicts > 0 {
+			resultString = append(resultString, fmt.Sprintf("  - NumReplaceWriteConflicts : %d\n", s.NumReplaceWriteConflicts))
+		}
+		if s.NumReplaceLockTimeouts > 0 {
+			resultString = append(resultString, fmt.Sprintf("  - NumReplaceLockTimeouts   : %d\n", s.NumReplaceLockTimeouts))
+		}
+		if s.NumUpdateWriteConflicts > 0 {
+			resultString = append(resultString, fmt.Sprintf("  - NumUpdateWriteConflicts  : %d\n", s.NumUpdateWriteConflicts))
+		}
+	}
+
+	return resultString
 }
 
 func (n *NormalProg) StatsOutput() []string {
@@ -203,6 +223,7 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 		SubCommand:        subCmd,
 		NumberOfShards:    GetInt64Value(m, "numberOfShards", 3),
 		ReplicationFactor: GetInt64Value(m, "replicationFactor", 3),
+		OneShard:          GetBoolValue(m, "oneShard", false),
 		DocConfig: datagen.DocumentConfig{
 			SizePerDoc:   GetInt64Value(m, "documentSize", 128),
 			Size:         GetInt64Value(m, "size", 16*1024*1024*1024),
@@ -221,6 +242,7 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 		Timeout:            GetInt64Value(m, "timeout", 3600),
 		Retries:            GetInt64Value(m, "retries", 0),
 		AddFromTo:          GetBoolValue(m, "addFromTo", false),
+		UseAql:             GetBoolValue(m, "useAql", false),
 		Smart:              GetBoolValue(m, "smart", false),
 		WaitForSync:        GetBoolValue(m, "waitForSync", false),
 		ReplicationVersion: GetStringValue(m, "replicationVersion", ""),
@@ -245,11 +267,16 @@ func NewNormalProg(args []string, line int) (feedlang.Program, error) {
 
 func (np *NormalProg) Create(cl driver.Client) error {
 	start := time.Now()
+	dbCreationOptions := driver.CreateDatabaseDefaultOptions{
+		ReplicationVersion: driver.DatabaseReplicationVersion(np.ReplicationVersion),
+	}
+	if np.OneShard {
+		dbCreationOptions.Sharding = "single"
+	}
+
 	db, err := database.CreateOrGetDatabase(nil, cl, np.Database,
 		&driver.CreateDatabaseOptions{
-			Options: driver.CreateDatabaseDefaultOptions{
-				ReplicationVersion: driver.DatabaseReplicationVersion(np.ReplicationVersion),
-			}})
+			Options: dbCreationOptions})
 	if err != nil {
 		return fmt.Errorf("Could not create/open database %s: %v\n", np.Database, err)
 	}
@@ -266,13 +293,18 @@ func (np *NormalProg) Create(cl driver.Client) error {
 		return fmt.Errorf("Error: could not look for collection %s: %v\n", np.Collection, err)
 	}
 
-	// Now create the batchimport collection:
-	_, err = db.CreateCollection(nil, np.Collection, &driver.CreateCollectionOptions{
+	collectionCreateOptions := &driver.CreateCollectionOptions{
 		Type:              driver.CollectionTypeDocument,
-		NumberOfShards:    int(np.NumberOfShards),
 		ReplicationFactor: int(np.ReplicationFactor),
 		WaitForSync:       np.WaitForSync,
-	})
+	}
+
+	if !np.OneShard {
+		collectionCreateOptions.NumberOfShards = int(np.NumberOfShards)
+	}
+
+	// Now create the batchimport collection:
+	_, err = db.CreateCollection(nil, np.Collection, collectionCreateOptions)
 	if err != nil {
 		return fmt.Errorf("Error: could not create collection %s: %v", np.Collection, err)
 	}
@@ -853,6 +885,7 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		cyclestart := time.Now()
 
 		writeConflicts := int64(0)
+		lockTimeouts := int64(0)
 
 		// It is crucial that every go routine has its own random source, otherwise
 		// we create a lot of contention.
@@ -873,27 +906,59 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 				docs = append(docs, doc)
 			}
 			start := time.Now()
-			_, errSlice, err := coll.ReplaceDocuments(ctx, keys, docs)
-			if err != nil {
-				// if there's a write/write conflict, we ignore it, but count for
-				// statistics, err is not supposed to return a write conflict, only
-				// the ErrorSlice, but doesn't hurt performance much to test it
-				if driver.IsPreconditionFailed(err) {
-					writeConflicts++
-				} else {
-					stats.NumReplaceWriteConflicts += writeConflicts
-					return fmt.Errorf("Can not replace documents %v\n", err)
+
+			if np.UseAql {
+				query := `
+				  LET amountOfEntries = COUNT(@keys) - 1
+				  FOR position IN 0..(amountOfEntries)
+				    LET key = NTH(@keys, position)
+				    LET doc = NTH(@docs, position)
+				    REPLACE key WITH doc IN @@collectionName
+				`
+
+				bindVars := map[string]interface{}{
+					"@collectionName": coll.Name(),
+					"docs":            docs,
+					"keys":            keys,
 				}
-			}
-			if errSlice != nil {
-				for _, err2 := range errSlice {
-					if err2 != nil {
-						if driver.IsPreconditionFailed(err2) {
-							writeConflicts++
+
+				cursor, err := db.Query(ctx, query, bindVars)
+				if err != nil {
+					errorAsString := err.Error()
+					if strings.Contains(errorAsString, "write-write conflict") {
+						writeConflicts++
+					} else if strings.Contains(errorAsString, "timeout waiting to lock key") {
+						lockTimeouts++
+					} else {
+						return fmt.Errorf("Unhandled query error during randomReplace documents %v\n", err)
+					}
+				} else {
+					cursor.Close()
+				}
+			} else {
+				_, errSlice, err := coll.ReplaceDocuments(ctx, keys, docs)
+				if err != nil {
+					// if there's a write/write conflict, we ignore it, but count for
+					// statistics, err is not supposed to return a write conflict, only
+					// the ErrorSlice, but doesn't hurt performance much to test it
+					if driver.IsPreconditionFailed(err) {
+						writeConflicts++
+					} else {
+						stats.NumReplaceWriteConflicts += writeConflicts
+						return fmt.Errorf("Can not replace documents %v\n", err)
+					}
+				}
+				if errSlice != nil {
+					for _, err2 := range errSlice {
+						if err2 != nil {
+							if driver.IsPreconditionFailed(err2) {
+								writeConflicts++
+							}
 						}
 					}
 				}
 			}
+
 			metrics.DocumentsReplaced.Add(float64(batchSizeLimit))
 			metrics.BatchesReplaced.Inc()
 
@@ -904,6 +969,8 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		stats.TotalTime = totaltime
 		stats.NumberOps = np.LoadPerThread * batchSizeLimit
 		stats.OpsPerSecond = replacespersec
+		stats.NumReplaceWriteConflicts += writeConflicts
+		stats.NumReplaceLockTimeouts += lockTimeouts
 		stats.FillInStats(times)
 		PrintStatistics(&stats, fmt.Sprintf("normal (replace):\n  Times for replacing %d batches (line %d of script).\n  docs per second in this go routine: %f", np.Stats.StartLine, np.LoadPerThread, replacespersec))
 
@@ -911,7 +978,6 @@ func replaceRandomlyInParallel(np *NormalProg) error {
 		np.Stats.Mutex.Lock()
 		np.Stats.Threads = append(np.Stats.Threads, stats)
 		np.Stats.Mutex.Unlock()
-		stats.NumReplaceWriteConflicts += writeConflicts
 		return nil
 	}, func(totaltime time.Duration, haveError bool) error {
 		// Here, we aggregate the data from all threads and report for the
@@ -968,6 +1034,7 @@ func updateRandomlyInParallel(np *NormalProg) error {
 		times := make([]time.Duration, 0, np.LoadPerThread)
 		cyclestart := time.Now()
 		writeConflicts := int64(0)
+		lockTimeouts := int64(0)
 
 		// It is crucial that every go routine has its own random source, otherwise
 		// we create a lot of contention.
@@ -989,25 +1056,56 @@ func updateRandomlyInParallel(np *NormalProg) error {
 
 			start := time.Now()
 
-			_, errSlice, err := coll.UpdateDocuments(ctx, keys, docs)
-			if err != nil {
-				//if there's a write/write conflict, we ignore it, but count for statistics, err is not supposed to return a write conflict, only the ErrorSlice, but doesn't hurt performance much to test it
-				if driver.IsPreconditionFailed(err) {
-					writeConflicts++
-				} else {
-					stats.NumUpdateWriteConflicts += writeConflicts
-					return fmt.Errorf("Can not update documents %v\n", err)
+			if np.UseAql {
+				query := `
+				  LET amountOfEntries = COUNT(@keys) - 1
+				  FOR position IN 0..(amountOfEntries)
+				    LET key = NTH(@keys, position)
+				    LET doc = NTH(@docs, position)
+				    UPDATE key WITH doc IN @@collectionName
+				`
+
+				bindVars := map[string]interface{}{
+					"@collectionName": coll.Name(),
+					"docs":            docs,
+					"keys":            keys,
 				}
-			}
-			if errSlice != nil {
-				for _, err2 := range errSlice {
-					if err2 != nil {
-						if driver.IsPreconditionFailed(err2) {
-							writeConflicts++
+
+				cursor, err := db.Query(ctx, query, bindVars)
+				if err != nil {
+					errorAsString := err.Error()
+					if strings.Contains(errorAsString, "write-write conflict") {
+						writeConflicts++
+					} else if strings.Contains(errorAsString, "timeout waiting to lock key") {
+						lockTimeouts++
+					} else {
+						return fmt.Errorf("Unhandled query error during randomReplace documents %v\n", err)
+					}
+				} else {
+					cursor.Close()
+				}
+			} else {
+				_, errSlice, err := coll.UpdateDocuments(ctx, keys, docs)
+				if err != nil {
+					//if there's a write/write conflict, we ignore it, but count for statistics, err is not supposed to return a write conflict, only the ErrorSlice, but doesn't hurt performance much to test it
+					if driver.IsPreconditionFailed(err) {
+						writeConflicts++
+					} else {
+						stats.NumUpdateWriteConflicts += writeConflicts
+						return fmt.Errorf("Can not update documents %v\n", err)
+					}
+				}
+				if errSlice != nil {
+					for _, err2 := range errSlice {
+						if err2 != nil {
+							if driver.IsPreconditionFailed(err2) {
+								writeConflicts++
+							}
 						}
 					}
 				}
 			}
+
 			metrics.BatchesUpdated.Add(float64(batchSizeLimit))
 			metrics.BatchesUpdated.Inc()
 			times = append(times, time.Now().Sub(start))
@@ -1017,6 +1115,8 @@ func updateRandomlyInParallel(np *NormalProg) error {
 		stats.TotalTime = totaltime
 		stats.NumberOps = np.LoadPerThread * batchSizeLimit
 		stats.OpsPerSecond = updatespersec
+		stats.NumReplaceWriteConflicts += writeConflicts
+		stats.NumReplaceLockTimeouts += lockTimeouts
 		stats.FillInStats(times)
 		PrintStatistics(&stats, fmt.Sprintf("normal (update):\n  Times for updating %d batches (line %d of script).\n  docs per second in this go routine: %f", np.LoadPerThread, np.Stats.StartLine, updatespersec))
 
@@ -1024,7 +1124,6 @@ func updateRandomlyInParallel(np *NormalProg) error {
 		np.Stats.Mutex.Lock()
 		np.Stats.Threads = append(np.Stats.Threads, stats)
 		np.Stats.Mutex.Unlock()
-		stats.NumReplaceWriteConflicts += writeConflicts
 		return nil
 	},
 
@@ -1086,7 +1185,22 @@ func readRandomlyInParallel(np *NormalProg) error {
 
 			var doc2 datagen.Doc
 			start := time.Now()
-			_, err := coll.ReadDocument(ctx, doc.Key, &doc2)
+
+			var err error
+			if np.UseAql {
+				query := "RETURN DOCUMENT(@myDocumentID)"
+				bindVars := map[string]interface{}{
+					"myDocumentID": coll.Name() + "/" + doc.Key,
+				}
+				var cursor driver.Cursor
+				cursor, err = db.Query(ctx, query, bindVars)
+				if err != nil {
+					cursor.Close()
+				}
+			} else {
+				_, err = coll.ReadDocument(ctx, doc.Key, &doc2)
+			}
+
 			if err != nil {
 				return fmt.Errorf("Can not read document with _key %s %v\n", doc.Key, err)
 			}
@@ -1142,7 +1256,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 			return fmt.Errorf("Can not get database: %s", np.Database)
 		}
 
-		edges, err := db.Collection(nil, np.Collection)
+		insertCollection, err := db.Collection(nil, np.Collection)
 		if err != nil {
 			PrintTS(fmt.Sprintf("writeSomeBatches: could not open `%s` collection: %v\n", np.Collection, err))
 			return err
@@ -1178,7 +1292,28 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 				docs = append(docs, doc)
 			}
 			ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
-			_, _, err := edges.CreateDocuments(ctx, docs)
+
+			var err error
+			if np.UseAql && np.AddFromTo {
+				// Reason: Right now all generated docs land in the same document arary `docs`. If we want to allow
+				// creation via AQL here as well, we need to split the docs array by their collection names and/or
+				// modify the query in the `np.UseAql` case.
+				return fmt.Errorf("currently it is not supported to set useAql and addFromTo to `true` at the same time")
+			}
+			if np.UseAql {
+				query := "FOR d IN @docs INSERT d INTO " + insertCollection.Name()
+				bindVars := map[string]interface{}{
+					"docs": docs,
+				}
+				var cursor driver.Cursor
+				cursor, err = db.Query(ctx, query, bindVars)
+				if err != nil {
+					cursor.Close()
+				}
+			} else {
+				_, _, err = insertCollection.CreateDocuments(ctx, docs)
+			}
+
 			cancel()
 			if err != nil {
 				PrintTS(fmt.Sprintf("writeSomeBatches: could not write batch: %v, id: %d", err, id))
@@ -1191,7 +1326,20 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 						PrintTS(fmt.Sprintf("normal: %s Need retry for id %d: %d of %d.\n", time.Now(), id, i, np.Retries))
 					}
 					ctx, cancel = context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
-					_, _, err = edges.CreateDocuments(ctx, docs)
+					if np.UseAql {
+						query := "FOR d IN @docs INSERT d INTO " + insertCollection.Name()
+						bindVars := map[string]interface{}{
+							"docs": docs,
+						}
+						var cursor driver.Cursor
+						cursor, err = db.Query(ctx, query, bindVars)
+						if err != nil {
+							cursor.Close()
+						}
+					} else {
+						_, _, err = insertCollection.CreateDocuments(ctx, docs)
+					}
+
 					cancel()
 					if err == nil {
 						if config.Verbose {

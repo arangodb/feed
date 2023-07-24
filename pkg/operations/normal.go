@@ -1192,7 +1192,11 @@ func readRandomlyInParallel(np *NormalProg) error {
 				bindVars := map[string]interface{}{
 					"myDocumentID": coll.Name() + "/" + doc.Key,
 				}
-				_, err = db.Query(ctx, query, bindVars)
+				var cursor driver.Cursor
+				cursor, err = db.Query(ctx, query, bindVars)
+				if err != nil {
+					cursor.Close()
+				}
 			} else {
 				_, err = coll.ReadDocument(ctx, doc.Key, &doc2)
 			}
@@ -1301,7 +1305,11 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 				bindVars := map[string]interface{}{
 					"docs": docs,
 				}
-				_, err = db.Query(ctx, query, bindVars)
+				var cursor driver.Cursor
+				cursor, err = db.Query(ctx, query, bindVars)
+				if err != nil {
+					cursor.Close()
+				}
 			} else {
 				_, _, err = insertCollection.CreateDocuments(ctx, docs)
 			}
@@ -1323,7 +1331,11 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 						bindVars := map[string]interface{}{
 							"docs": docs,
 						}
-						_, err = db.Query(ctx, query, bindVars)
+						var cursor driver.Cursor
+						cursor, err = db.Query(ctx, query, bindVars)
+						if err != nil {
+							cursor.Close()
+						}
 					} else {
 						_, _, err = insertCollection.CreateDocuments(ctx, docs)
 					}

@@ -16,6 +16,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	Version = "0.9.0"
+)
+
 var (
 	cmd = &cobra.Command{
 		Short: "The 'feed' tool feeds ArangoDB with generated data, quickly.",
@@ -64,7 +68,7 @@ func produceResult(prog feedlang.Program) {
 
 func mainExecute(cmd *cobra.Command, _ []string) error {
 
-	fmt.Printf("Hello world, this is 'feed'!\n\n")
+	fmt.Printf("Hello world, this is 'feed' version %s !\n\n", Version)
 
 	// Expose metrics:
 	if config.MetricsPort != 0 {

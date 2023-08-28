@@ -36,6 +36,151 @@ type Poly struct {
 	Coordinates []Point `json:"coordinates"`
 }
 
+type NastyDoc struct {
+	// Key is for the database, it is the hash value of Index
+	Key string `json:"_key"`
+	// Index: from 0 to some n-1, unique and global in the whole graph
+	// For vertices only.
+	Index uint64 `json:"-"`
+	Sha   string `json:"sha"`
+	Data0 string `json:"data0"`
+	Data1 string `json:"data1,omitempty"`
+	Data2 string `json:"data2,omitempty"`
+	Data3 string `json:"data3,omitempty"`
+	Data4 string `json:"data4,omitempty"`
+	Data5 string `json:"data5,omitempty"`
+	Data6 string `json:"data6,omitempty"`
+	Data7 string `json:"data7,omitempty"`
+	Data8 string `json:"data8,omitempty"`
+	Data9 string `json:"data9,omitempty"`
+	Dataa string `json:"dataa,omitempty"`
+	Datab string `json:"datab,omitempty"`
+	Datac string `json:"datac,omitempty"`
+	Datad string `json:"datad,omitempty"`
+	Datae string `json:"datae,omitempty"`
+	Dataf string `json:"dataf,omitempty"`
+	// Indexed data:
+	Indexed0 string `json:"indexed0,omitempty"`
+	Indexed1 string `json:"indexed1,omitempty"`
+	Indexed2 string `json:"indexed2"`
+}
+
+func (doc *NastyDoc) ShaKey(index int64, keySize int) {
+	doc.Sha = KeyFromIndex(uint64(index))
+	doc.Key = doc.Sha[0:keySize]
+}
+
+func (doc *NastyDoc) FillData(docConfig *DocumentConfig, source *rand.Rand) {
+	// First the indexed fields:
+	if source.Intn(100) != 47 {
+		doc.Indexed0 = makeRandomWords(7, source)
+		x := source.Intn(1000)
+		if x < 10 {
+			for i := 1; i < x; i += 1 {
+				doc.Indexed0 = doc.Indexed0 + " Honk"
+			}
+		}
+	}
+	if source.Intn(100) < 90 {
+		doc.Indexed1 = makeRandomWords(10, source)
+	}
+	doc.Indexed2 = makeRandomWords(5, source)
+	// And now the data:
+	if source.Intn(100) < 95 {
+		doc.Data0 = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 1 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Data1 = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 2 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Data2 = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 3 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Data3 = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 4 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Data4 = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 5 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Data5 = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 6 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Data6 = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 7 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Data7 = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 8 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Data8 = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 9 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Data9 = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 10 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Dataa = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 11 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Datab = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 12 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Datac = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 13 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Datad = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 14 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Datae = MakeRandomString(source.Intn(20)+10, source)
+	}
+	if docConfig.NumberFields <= 15 {
+		return
+	}
+	if source.Intn(100) < 95 {
+		doc.Dataf = MakeRandomString(source.Intn(20)+10, source)
+	}
+}
+
 type Doc struct {
 	// Key is for the database, it is the hash value of Index
 	Key string `json:"_key"`

@@ -208,6 +208,7 @@ var (
 		"randomRead": {}, "randomUpdate": {}, "randomReplace": {},
 		"createIdx": {}, "dropIdx": {}, "queryOnIdx": {}, "drop": {},
 		"truncate": {}, "dropDatabase": {}, "createView": {}, "dropView": {},
+		"nastyViewData": {},
 	}
 	writeConflictStats WriteConflictStats
 )
@@ -497,6 +498,150 @@ func (np *NormalProg) Truncate(cl driver.Client) error {
 	np.Stats.Mutex.Lock()
 	np.Stats.Overall = SingleStats(totaltime, float64(time.Second)/float64(totaltime))
 	np.Stats.Mutex.Unlock()
+	return nil
+}
+
+func (np *NormalProg) NastyViewData() error {
+	if np.DocConfig.KeySize < 1 || np.DocConfig.KeySize > 64 {
+		np.DocConfig.KeySize = 64
+	}
+
+	// Estimate the document size (the 270 is confirmed experimentally
+	// and theoretically makes sense):
+	sizePerDoc := np.DocConfig.KeySize + 270 + np.DocConfig.NumberFields*21
+	// Number of batches to put into the collection:
+	number := (np.DocConfig.Size / sizePerDoc) / np.BatchSize
+
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: nastyViewData: Will write %d batches of %d docs across %d goroutines... (line %d of script)\n", number, np.BatchSize, np.Parallelism, np.Stats.StartLine))
+
+	if err := writeSomeBatchesParallelNastyViewData(np, number); err != nil {
+		return fmt.Errorf("can not do some batch imports")
+	}
+
+	return nil
+}
+
+// writeSomeBatchesParallelNastyViewData does some batch imports in parallel
+func writeSomeBatchesParallelNastyViewData(np *NormalProg, number int64) error {
+	err := RunParallel(np.Parallelism, np.StartDelay, "writeSomeBatchesNastyViewData", func(id int64) error {
+		nrBatches := number / np.Parallelism
+
+		// Let's use our own private client and connection here:
+		cl, err := config.MakeClient()
+		if err != nil {
+			return fmt.Errorf("Can not make client: %v", err)
+		}
+		db, err := cl.Database(context.Background(), np.Database)
+		if err != nil {
+			return fmt.Errorf("Can not get database: %s", np.Database)
+		}
+
+		insertCollection, err := db.Collection(nil, np.Collection)
+		if err != nil {
+			PrintTS(fmt.Sprintf("writeSomeBatchesNastyViewData: could not open `%s` collection: %v\n", np.Collection, err))
+			return err
+		}
+
+		docs := make([]datagen.NastyDoc, 0, np.BatchSize)
+		times := make([]time.Duration, 0, np.BatchSize)
+		cyclestart := time.Now()
+		last100start := cyclestart
+
+		// It is crucial that every go routine has its own random source, otherwise
+		// we create a lot of contention.
+		source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
+
+		for i := int64(1); i <= nrBatches; i++ {
+			start := time.Now()
+			for j := int64(1); j <= np.BatchSize; j++ {
+				var doc datagen.NastyDoc
+				doc.ShaKey((id*nrBatches+i-1)*np.BatchSize+j-1, int(np.DocConfig.KeySize))
+				doc.FillData(&np.DocConfig, source)
+				docs = append(docs, doc)
+			}
+			ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
+
+			_, _, err := insertCollection.CreateDocuments(ctx, docs)
+
+			cancel()
+			if err != nil {
+				PrintTS(fmt.Sprintf("writeSomeBatchesNastyViewData: could not write batch: %v, id: %d", err, id))
+				if np.Retries == 0 {
+					return err
+				}
+				var i int64 = 1
+				for i <= np.Retries {
+					if config.Verbose {
+						PrintTS(fmt.Sprintf("normal: nastyViewData: %s Need retry for id %d: %d of %d.\n", time.Now(), id, i, np.Retries))
+					}
+					ctx, cancel = context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
+					_, _, err = insertCollection.CreateDocuments(ctx, docs)
+
+					cancel()
+					if err == nil {
+						if config.Verbose {
+							PrintTS(fmt.Sprintf("writeSomeBatchesNastyViewData: retry %d of %d was successful, id: %d", i, np.Retries, id))
+						}
+						break
+					}
+					PrintTS(fmt.Sprintf("writeSomeBatchesNasteViewData: could not write batch: %v, id: %d, retry %d of %d", err, id, i, np.Retries))
+					i += 1
+				}
+				if err != nil {
+					return err
+				}
+			}
+			metrics.DocumentsInserted.Add(float64(np.BatchSize))
+			metrics.BatchesInserted.Inc()
+			docs = docs[0:0]
+			times = append(times, time.Now().Sub(start))
+			if i%100 == 0 {
+				dur := float64(time.Now().Sub(last100start)) / float64(time.Second)
+				last100start = time.Now()
+
+				// Intermediate report:
+				if config.Verbose {
+					PrintTS(fmt.Sprintf("normal: nastyViewDate: %s Have imported %d batches for id %d, last 100 took %f seconds.\n", time.Now(), int(i), id, dur))
+				}
+			}
+		}
+
+		totaltime := time.Now().Sub(cyclestart)
+		nrDocs := np.BatchSize * nrBatches
+		docspersec := float64(nrDocs) / (float64(totaltime) / float64(time.Second))
+		stats := NormalStatsOneThread{
+			TotalTime:    totaltime,
+			NumberOps:    nrDocs,
+			OpsPerSecond: docspersec,
+		}
+		stats.FillInStats(times)
+		PrintStatistics(&stats, fmt.Sprintf("normal (nastyViewData):\n  Times for inserting %d batches (line %d of script).\n  docs per second in this go routine: %f", nrBatches, np.Stats.StartLine, docspersec))
+
+		// Report back:
+		np.Stats.Mutex.Lock()
+		np.Stats.Threads = append(np.Stats.Threads, stats)
+		np.Stats.Mutex.Unlock()
+
+		return nil
+	}, func(totaltime time.Duration, haveError bool) error {
+		// Here, we aggregate the data from all threads and report for the
+		// whole command:
+		np.Stats.Overall = AggregateStats(np.Stats.Threads, totaltime)
+		np.Stats.Overall.TotalTime = totaltime
+		np.Stats.Overall.HaveError = haveError
+		batchesPerSec := float64(number) / (float64(totaltime) / float64(time.Second))
+		docspersec := float64(number*np.BatchSize) / (float64(totaltime) / float64(time.Second))
+
+		msg := fmt.Sprintf("normal (nastyViewData):\n  Total number of documents written: %d,\n  total batches per second: %f,\n  total docs per second: %f,\n  with errors: %v", number*np.BatchSize, batchesPerSec, docspersec, haveError)
+		statsmsg := np.Stats.Overall.StatsToStrings()
+		PrintTSs(msg, statsmsg)
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("can not write some batches in parallel: %v", err)
+	}
 	return nil
 }
 
@@ -1451,6 +1596,8 @@ func (np *NormalProg) Execute() error {
 		err = np.CreateView(cl)
 	case "dropView":
 		err = np.DropView(cl)
+	case "nastyViewData":
+		err = np.NastyViewData()
 	default:
 		err = nil
 	}

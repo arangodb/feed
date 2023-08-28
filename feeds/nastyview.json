@@ -1,0 +1,103 @@
+{
+  "storedValues": [
+    {
+      "fields": [
+        "data0"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "data1"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "data2"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "data3"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "data4"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "data5"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "data6"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "data7"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "data8"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "data9"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "indexed0"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "indexed1"
+      ],
+      "compression": "none"
+    },
+    {
+      "fields": [
+        "indexed2"
+      ],
+      "compression": "none"
+    }
+  ],
+  "links": {
+    "c": {
+      "fields": {
+        "indexed0": {
+          "analyzers": [
+            "text_en"
+          ]
+        },
+        "indexed1": {
+          "analyzers": [
+            "text_en"
+          ]
+        },
+        "indexed2": {
+          "analyzers": [
+            "text_en"
+          ]
+        }
+      }
+    }
+  }
+}

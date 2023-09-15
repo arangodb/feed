@@ -59,6 +59,10 @@ func (ns *NormalStatsOneThread) FillInStats(times []time.Duration) {
 func AggregateStats(stats []NormalStatsOneThread, totalTime time.Duration) NormalStatsOneThread {
 	var t NormalStatsOneThread
 	len := len(stats)
+	if len == 0 {
+		return t
+	}
+
 	for _, s := range stats {
 		t.Average += s.Average
 		if t.Minimum == 0 || s.Minimum < t.Minimum {

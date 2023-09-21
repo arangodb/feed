@@ -3,7 +3,7 @@ module github.com/arangodb/feed
 go 1.19
 
 require (
-	github.com/arangodb/go-driver v1.5.3-0.20230428134606-b490917a5b5d
+	github.com/arangodb/go-driver v1.6.1-0.20230920103030-c722bca402b2
 	github.com/fatih/color v1.7.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v0.9.3

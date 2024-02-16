@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/arangodb/feed/pkg/config"
+	"github.com/arangodb/feed/pkg/datagen"
 	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/feed/pkg/operations"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -25,7 +26,8 @@ var (
 		Short: "The 'feed' tool feeds ArangoDB with generated data, quickly.",
 		RunE:  mainExecute,
 	}
-	ProgName string
+	ProgName  string
+	MoreWords int
 )
 
 func init() {
@@ -39,6 +41,7 @@ func init() {
 	flags.StringVar(&config.Protocol, "protocol", "vst", "Protocol (http1, http2, vst)")
 	flags.StringVar(&config.JSONOutput, "jsonOutputFile", "feed.json", "Filename for JSON result output.")
 	flags.IntVar(&config.MetricsPort, "metricsPort", 8888, "Metrics port (0 for no metrics)")
+	flags.IntVar(&MoreWords, "moreWords", 0, "Number of additional random terms in long word list")
 }
 
 func produceJSONResult(prog feedlang.Program, fileName string) {
@@ -69,6 +72,8 @@ func produceResult(prog feedlang.Program) {
 func mainExecute(cmd *cobra.Command, _ []string) error {
 
 	fmt.Printf("Hello world, this is 'feed' version %s !\n\n", Version)
+
+	datagen.ExtendLongWordList(MoreWords)
 
 	// Expose metrics:
 	if config.MetricsPort != 0 {
@@ -105,7 +110,9 @@ func mainExecute(cmd *cobra.Command, _ []string) error {
 		fmt.Printf("Error in parse: %v\n", err)
 		os.Exit(3)
 	}
+
 	err = prog.Execute()
+
 	if err != nil {
 		fmt.Printf("Error in execution: %v\n", err)
 		os.Exit(4)

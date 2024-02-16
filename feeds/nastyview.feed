@@ -1,5 +1,5 @@
 [
 normal create collection=c numberOfShards=3 replicationFactor=2 drop=true
-normal nastyViewData collection=c size=10G numberFields=10 parallelism=40 keySize=32
+normal nastyViewData collection=c size=10M numberFields=10 parallelism=1 keySize=32
 normal createView viewDefFile=feeds/nastyview.json view=v drop=true
 ]

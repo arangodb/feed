@@ -1,5 +1,9 @@
 package datagen
 
+import (
+	"math/rand"
+)
+
 var LongWordList = []string{
 	"Abbott",
 	"AbbVie",
@@ -669,4 +673,11 @@ var LongWordList = []string{
 	"Zimmer",
 	"Zions",
 	"Zoetis",
+}
+
+func ExtendLongWordList(nr int) {
+	source := rand.New(rand.NewSource(int64(12345) + rand.Int63()))
+	for i := 0; i < nr; i++ {
+		LongWordList = append(LongWordList, MakeRandomString(rand.Intn(10)+5, source))
+	}
 }

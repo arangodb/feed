@@ -1343,7 +1343,7 @@ func readRandomlyInParallel(np *NormalProg) error {
 				}
 				var cursor driver.Cursor
 				cursor, err = db.Query(ctx, query, bindVars)
-				if err != nil {
+				if cursor != nil {
 					cursor.Close()
 				}
 			} else {
@@ -1456,7 +1456,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 				}
 				var cursor driver.Cursor
 				cursor, err = db.Query(ctx, query, bindVars)
-				if err != nil {
+				if cursor != nil {
 					cursor.Close()
 				}
 			} else {
@@ -1482,7 +1482,7 @@ func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 						}
 						var cursor driver.Cursor
 						cursor, err = db.Query(ctx, query, bindVars)
-						if err != nil {
+						if cursor != nil {
 							cursor.Close()
 						}
 					} else {

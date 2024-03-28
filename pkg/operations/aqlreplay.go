@@ -2,16 +2,28 @@ package operations
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	//"github.com/arangodb/feed/pkg/client"
 	"github.com/arangodb/feed/pkg/config"
 	//"github.com/arangodb/feed/pkg/datagen"
+	"github.com/apache/arrow/go/v16/parquet"
+	//"github.com/apache/arrow/go/v16/parquet/file"
+	"github.com/apache/arrow/go/v16/parquet/metadata"
+	//"github.com/apache/arrow/go/v16/parquet/schema"
+	"github.com/apache/arrow/go/v16/arrow/memory"
 	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/feed/pkg/metrics"
 	"github.com/arangodb/go-driver"
+	"golang.org/x/xerrors"
+	"io"
 	"os"
+	"os/exec"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -102,6 +114,144 @@ type SingleQuery struct {
 	Query     QueryJson `json:"q"`
 }
 
+const (
+	footerSize uint32 = 8
+)
+
+var (
+	magicBytes                  = []byte("PAR1")
+	magicEBytes                 = []byte("PARE")
+	errInconsistentFileMetadata = xerrors.New("parquet: file is smaller than indicated metadata size")
+)
+
+func GetFileContentType(fname string) (string, error) {
+	app := "file"
+	cmd := exec.Command(app, fname)
+	stdout, err := cmd.Output()
+	if err != nil {
+		fmt.Println(err.Error())
+		return "", err
+	}
+	return string(stdout), nil
+}
+
+type Reader struct {
+	r            parquet.ReaderAtSeeker
+	props        *parquet.ReaderProperties
+	metadata     *metadata.FileMetaData
+	footerOffset int64
+
+	bufferPool sync.Pool
+}
+
+type ReadOption func(*Reader)
+
+// parseMetaData handles parsing the metadata from the opened file.
+func (f *Reader) parseMetaData() error {
+	if f.footerOffset <= int64(footerSize) {
+		return fmt.Errorf("parquet: file too small (size=%d)", f.footerOffset)
+	}
+
+	buf := make([]byte, footerSize)
+	// backup 8 bytes to read the footer size (first four bytes) and the magic bytes (last 4 bytes)
+	n, err := f.r.ReadAt(buf, f.footerOffset-int64(footerSize))
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("parquet: could not read footer: %w", err)
+	}
+	if n != len(buf) {
+		return fmt.Errorf("parquet: could not read %d bytes from end of file", len(buf))
+	}
+
+	size := int64(binary.LittleEndian.Uint32(buf[:4]))
+	if size < 0 || size+int64(footerSize) > f.footerOffset {
+		return errInconsistentFileMetadata
+	}
+
+	fileDecryptProps := f.props.FileDecryptProps
+
+	switch {
+	case bytes.Equal(buf[4:], magicBytes): // non-encrypted metadata
+		buf = make([]byte, size)
+		if _, err := f.r.ReadAt(buf, f.footerOffset-int64(footerSize)-size); err != nil {
+			return fmt.Errorf("parquet: could not read footer: %w", err)
+		}
+
+		f.metadata, err = metadata.NewFileMetaData(buf, nil)
+		if err != nil {
+			return fmt.Errorf("parquet: could not read footer: %w", err)
+		}
+
+	case bytes.Equal(buf[4:], magicEBytes): // encrypted metadata
+		buf = make([]byte, size)
+		if _, err := f.r.ReadAt(buf, f.footerOffset-int64(footerSize)-size); err != nil {
+			return fmt.Errorf("parquet: could not read footer: %w", err)
+		}
+
+		if fileDecryptProps == nil {
+			return xerrors.New("could not read encrypted metadata, no decryption found in reader's properties")
+		}
+
+		fileCryptoMetadata, err := metadata.NewFileCryptoMetaData(buf)
+		if err != nil {
+			return err
+		}
+
+		f.metadata, err = metadata.NewFileMetaData(buf[fileCryptoMetadata.Len():], nil)
+		if err != nil {
+			return fmt.Errorf("parquet: could not read footer: %w", err)
+		}
+	default:
+		return fmt.Errorf("parquet: magic bytes not found in footer. Either the file is corrupted or this isn't a parquet file")
+	}
+
+	return nil
+}
+
+func NewParquetReader(r parquet.ReaderAtSeeker, opts ...ReadOption) (*Reader, error) {
+	var err error
+	f := &Reader{r: r}
+	for _, o := range opts {
+		o(f)
+	}
+
+	if f.footerOffset <= 0 {
+		f.footerOffset, err = r.Seek(0, io.SeekEnd)
+		if err != nil {
+			return nil, fmt.Errorf("parquet: could not retrieve footer offset: %w", err)
+		}
+	}
+
+	if f.props == nil {
+		f.props = parquet.NewReaderProperties(memory.NewGoAllocator())
+	}
+
+	f.bufferPool = sync.Pool{
+		New: func() interface{} {
+			buf := memory.NewResizableBuffer(f.props.Allocator())
+			runtime.SetFinalizer(buf, func(obj *memory.Buffer) {
+				obj.Release()
+			})
+			return buf
+		},
+	}
+
+	if f.metadata == nil {
+		return f, f.parseMetaData()
+	}
+
+	return f, nil
+}
+
+// NumRows returns the total number of rows in this parquet file.
+func (f *Reader) NumRows() int64 {
+	return f.metadata.GetNumRows()
+}
+
+// NumRowGroups returns the total number of row groups in this file.
+func (f *Reader) NumRowGroups() int {
+	return len(f.metadata.GetRowGroups())
+}
+
 func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 	// First let's have a go routine which only reads the input and
 	// stuffs it into a channel of objects.
@@ -116,30 +266,48 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 			return
 		}
 		defer file.Close()
-		scanner := bufio.NewScanner(file)
-		first := true
-		for scanner.Scan() {
-			var sq SingleQuery
-			err = json.Unmarshal(scanner.Bytes(), &sq)
-			if err != nil {
-				// Handle error
-				PrintTS(fmt.Sprintf("replayAQL: Could not parse json: %s, error: %v, skipping it...\n", scanner.Text(), err))
-				return
-			} else {
-				if first {
-					var err error
-					firstTime, err = time.Parse(time.RFC3339, sq.TimeStamp)
-					PrintTS(fmt.Sprintf("Guck: %v\n", firstTime))
-					if err != nil {
-						PrintTS(fmt.Sprintf("replayAQL: Could not parse first time stamp %s, error: %v\n", sq.TimeStamp, err))
-					} else {
-						first = false
-					}
-				}
-				queries <- &sq
-			}
+
+		contentType, err := GetFileContentType(rp.Input)
+		if err != nil {
+			panic(err)
 		}
-		close(queries)
+
+		if strings.Contains(contentType, "Parquet") {
+			rdr, err := NewParquetReader(file)
+			if err != nil {
+				panic(err)
+			}
+
+			for r := 0; r < rdr.NumRowGroups(); r++ {
+				fmt.Println("--- Row Group:", r, " ---")
+			}
+			//			panic("")
+		} else {
+			scanner := bufio.NewScanner(file)
+			first := true
+			for scanner.Scan() {
+				var sq SingleQuery
+				err = json.Unmarshal(scanner.Bytes(), &sq)
+				if err != nil {
+					// Handle error
+					PrintTS(fmt.Sprintf("replayAQL: Could not parse json: %s, error: %v, skipping it...\n", scanner.Text(), err))
+					return
+				} else {
+					if first {
+						var err error
+						firstTime, err = time.Parse(time.RFC3339, sq.TimeStamp)
+						PrintTS(fmt.Sprintf("Guck: %v\n", firstTime))
+						if err != nil {
+							PrintTS(fmt.Sprintf("replayAQL: Could not parse first time stamp %s, error: %v\n", sq.TimeStamp, err))
+						} else {
+							first = false
+						}
+					}
+					queries <- &sq
+				}
+			}
+			close(queries)
+		}
 	}()
 
 	overallStartTime := time.Now()

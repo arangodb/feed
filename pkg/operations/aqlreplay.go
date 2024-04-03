@@ -9,17 +9,21 @@ import (
 	"fmt"
 	"github.com/apache/arrow/go/v16/arrow/memory"
 	"github.com/apache/arrow/go/v16/parquet"
-	format "github.com/apache/arrow/go/v16/parquet/internal/gen-go/parquet"
+	"github.com/apache/arrow/go/v16/parquet/file"
 	"github.com/apache/arrow/go/v16/parquet/metadata"
+	"github.com/apache/arrow/go/v16/parquet/schema"
 	"github.com/arangodb/feed/pkg/config"
 	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/feed/pkg/metrics"
+	format "github.com/arangodb/feed/pkg/parquet"
 	"github.com/arangodb/go-driver"
 	"golang.org/x/xerrors"
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -253,14 +257,84 @@ func (f *Reader) NumRowGroups() int {
 // to make it easier to use and interact with.
 type FileMetaData struct {
 	*format.FileMetaData
-	Schema        *schema.Schema
-	FileDecryptor encryption.FileDecryptor
+	Schema *schema.Schema
+	//FileDecryptor encryption.FileDecryptor
 
 	// app version of the writer for this file
-	version *AppVersion
+	version *metadata.AppVersion
 	// size of the raw bytes of the metadata in the file which were
 	// decoded by thrift, Size() getter returns the value.
 	metadataLen int
+}
+
+var (
+	// Regular expression for the version format
+	// major . minor . patch unknown - prerelease.x + build info
+	// Eg: 1.5.0ab-cdh5.5.0+cd
+	versionRx = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)([^-+]*)?(?:-([^+]*))?(?:\+(.*))?$`)
+	// Regular expression for the application format
+	// application_name version VERSION_FORMAT (build build_name)
+	// Eg: parquet-cpp version 1.5.0ab-xyz5.5.0+cd (build abcd)
+	applicationRx = regexp.MustCompile(`^(.*?)\s*(?:(version\s*(?:([^(]*?)\s*(?:\(\s*build\s*([^)]*?)\s*\))?)?)?)$`)
+
+	// Parquet816FixedVersion is the version used for fixing PARQUET-816
+	// that changed the padding calculations for dictionary headers on row groups.
+	Parquet816FixedVersion      = NewAppVersionExplicit("parquet-mr", 1, 2, 9)
+	parquet251FixedVersion      = NewAppVersionExplicit("parquet-mr", 1, 8, 0)
+	parquetCPPFixedStatsVersion = NewAppVersionExplicit("parquet-cpp", 1, 3, 0)
+	parquetMRFixedStatsVersion  = NewAppVersionExplicit("parquet-mr", 1, 10, 0)
+	// parquet1655FixedVersion is the version used for fixing PARQUET-1655
+	// which fixed min/max stats comparisons for Decimal types
+	parquet1655FixedVersion = NewAppVersionExplicit("parquet-cpp-arrow", 4, 0, 0)
+)
+
+// NewAppVersionExplicit is a convenience function to construct a specific
+// application version from the given app string and version
+func NewAppVersionExplicit(app string, major, minor, patch int) *metadata.AppVersion {
+	v := &metadata.AppVersion{App: app}
+	v.Version.Major = major
+	v.Version.Minor = minor
+	v.Version.Patch = patch
+	return v
+}
+
+// NewAppVersion parses a "created by" string such as "parquet-go 1.0.0".
+//
+// It also supports handling pre-releases and build info such as
+//
+//	parquet-cpp version 1.5.0ab-xyz5.5.0+cd (build abcd)
+func NewAppVersion(createdby string) *metadata.AppVersion {
+	v := &metadata.AppVersion{}
+
+	var ver []string
+
+	m := applicationRx.FindStringSubmatch(strings.ToLower(createdby))
+	if len(m) >= 4 {
+		v.App = m[1]
+		v.Build = m[4]
+		ver = versionRx.FindStringSubmatch(m[3])
+	} else {
+		v.App = "unknown"
+	}
+
+	if len(ver) >= 7 {
+		v.Version.Major, _ = strconv.Atoi(ver[1])
+		v.Version.Minor, _ = strconv.Atoi(ver[2])
+		v.Version.Patch, _ = strconv.Atoi(ver[3])
+		v.Version.Unknown = ver[4]
+		v.Version.PreRelease = ver[5]
+		v.Version.BuildInfo = ver[6]
+	}
+	return v
+}
+
+// WriterVersion returns the constructed application version from the
+// created by string
+func (f *FileMetaData) WriterVersion() *metadata.AppVersion {
+	if f.version == nil {
+		f.version = NewAppVersion(f.GetCreatedBy())
+	}
+	return f.version
 }
 
 // RowGroupReader is the primary interface for reading a single row group
@@ -274,27 +348,17 @@ type RowGroupReader struct {
 	bufferPool *sync.Pool
 }
 
-// WriterVersion returns the constructed application version from the
-// created by string
-func (f *FileMetaData) WriterVersion() *AppVersion {
-	if f.version == nil {
-		f.version = NewAppVersion(f.GetCreatedBy())
-	}
-	return f.version
-}
-
 // RowGroup returns a reader for the desired (0-based) row group
 func (f *Reader) RowGroup(i int) *RowGroupReader {
 	rg := f.metadata.RowGroups[i]
 
 	return &RowGroupReader{
-		fileMetadata:  f.metadata,
-		rgMetadata:    metadata.NewRowGroupMetaData(rg, f.metadata.Schema, f.WriterVersion(), f.fileDecryptor),
-		props:         f.props,
-		r:             f.r,
-		sourceSz:      f.footerOffset,
-		fileDecryptor: f.fileDecryptor,
-		bufferPool:    &f.bufferPool,
+		fileMetadata: f.metadata,
+		rgMetadata:   metadata.NewRowGroupMetaData(rg, f.metadata.Schema, nil, nil),
+		props:        f.props,
+		r:            f.r,
+		sourceSz:     f.footerOffset,
+		bufferPool:   &f.bufferPool,
 	}
 }
 
@@ -305,13 +369,13 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 	var firstTime time.Time
 	var errFromReader error
 	go func() {
-		file, err := os.Open(rp.Input)
+		f, err := os.Open(rp.Input)
 		if err != nil {
 			// Handle error
 			errFromReader = fmt.Errorf("replayAQL: Could not open input file %s, error: %v!\n", rp.Input, err)
 			return
 		}
-		defer file.Close()
+		defer f.Close()
 
 		contentType, err := GetFileContentType(rp.Input)
 		if err != nil {
@@ -319,20 +383,29 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 		}
 
 		if strings.Contains(contentType, "Parquet") {
-			rdr, err := NewParquetReader(file)
+
+			f.Close()
+			rdr, err := file.OpenParquetFile(rp.Input, false)
 			if err != nil {
-				panic(err)
+				fmt.Fprintln(os.Stderr, "error opening parquet file: ", err)
+				os.Exit(1)
 			}
 
 			for r := 0; r < rdr.NumRowGroups(); r++ {
 				fmt.Println("--- Row Group:", r, " ---")
 				rgr := rdr.RowGroup(r)
+				rowGroupMeta := rgr.MetaData()
+				fmt.Println("--- Total Bytes:", rowGroupMeta.TotalByteSize(), " ---")
+				var selectedColumns [1]int
+				selectedColumns[0] = 0
+				for range selectedColumns {
+					//chunkMeta, err := rowGroupMeta.ColumnChunk(c)
+					fmt.Println("--- Values ---")
+				}
 			}
-			rgr := rdr.RowGroup(r)
-			rowGroupMeta := rgr.MetaData()
 
 		} else {
-			scanner := bufio.NewScanner(file)
+			scanner := bufio.NewScanner(f)
 			first := true
 			for scanner.Scan() {
 				var sq SingleQuery

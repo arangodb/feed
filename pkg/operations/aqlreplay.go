@@ -7,14 +7,11 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	//"github.com/arangodb/feed/pkg/client"
-	"github.com/arangodb/feed/pkg/config"
-	//"github.com/arangodb/feed/pkg/datagen"
-	"github.com/apache/arrow/go/v16/parquet"
-	//"github.com/apache/arrow/go/v16/parquet/file"
-	"github.com/apache/arrow/go/v16/parquet/metadata"
-	//"github.com/apache/arrow/go/v16/parquet/schema"
 	"github.com/apache/arrow/go/v16/arrow/memory"
+	"github.com/apache/arrow/go/v16/parquet"
+	format "github.com/apache/arrow/go/v16/parquet/internal/gen-go/parquet"
+	"github.com/apache/arrow/go/v16/parquet/metadata"
+	"github.com/arangodb/feed/pkg/config"
 	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/feed/pkg/metrics"
 	"github.com/arangodb/go-driver"
@@ -252,6 +249,55 @@ func (f *Reader) NumRowGroups() int {
 	return len(f.metadata.GetRowGroups())
 }
 
+// FileMetaData is a proxy around the underlying thrift FileMetaData object
+// to make it easier to use and interact with.
+type FileMetaData struct {
+	*format.FileMetaData
+	Schema        *schema.Schema
+	FileDecryptor encryption.FileDecryptor
+
+	// app version of the writer for this file
+	version *AppVersion
+	// size of the raw bytes of the metadata in the file which were
+	// decoded by thrift, Size() getter returns the value.
+	metadataLen int
+}
+
+// RowGroupReader is the primary interface for reading a single row group
+type RowGroupReader struct {
+	r            parquet.ReaderAtSeeker
+	sourceSz     int64
+	fileMetadata *metadata.FileMetaData
+	rgMetadata   *metadata.RowGroupMetaData
+	props        *parquet.ReaderProperties
+
+	bufferPool *sync.Pool
+}
+
+// WriterVersion returns the constructed application version from the
+// created by string
+func (f *FileMetaData) WriterVersion() *AppVersion {
+	if f.version == nil {
+		f.version = NewAppVersion(f.GetCreatedBy())
+	}
+	return f.version
+}
+
+// RowGroup returns a reader for the desired (0-based) row group
+func (f *Reader) RowGroup(i int) *RowGroupReader {
+	rg := f.metadata.RowGroups[i]
+
+	return &RowGroupReader{
+		fileMetadata:  f.metadata,
+		rgMetadata:    metadata.NewRowGroupMetaData(rg, f.metadata.Schema, f.WriterVersion(), f.fileDecryptor),
+		props:         f.props,
+		r:             f.r,
+		sourceSz:      f.footerOffset,
+		fileDecryptor: f.fileDecryptor,
+		bufferPool:    &f.bufferPool,
+	}
+}
+
 func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 	// First let's have a go routine which only reads the input and
 	// stuffs it into a channel of objects.
@@ -280,8 +326,11 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 
 			for r := 0; r < rdr.NumRowGroups(); r++ {
 				fmt.Println("--- Row Group:", r, " ---")
+				rgr := rdr.RowGroup(r)
 			}
-			//			panic("")
+			rgr := rdr.RowGroup(r)
+			rowGroupMeta := rgr.MetaData()
+
 		} else {
 			scanner := bufio.NewScanner(file)
 			first := true

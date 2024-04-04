@@ -379,7 +379,8 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 
 		contentType, err := GetFileContentType(rp.Input)
 		if err != nil {
-			panic(err)
+			fmt.Errorf("replayAQL: Could not determin content type of file %s, error: %v!\n", rp.Input, err)
+			return
 		}
 
 		if strings.Contains(contentType, "Parquet") {
@@ -391,16 +392,47 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 				os.Exit(1)
 			}
 
+			var tmp = int64(0)
+
 			for r := 0; r < rdr.NumRowGroups(); r++ {
 				fmt.Println("--- Row Group:", r, " ---")
 				rgr := rdr.RowGroup(r)
 				rowGroupMeta := rgr.MetaData()
-				fmt.Println("--- Total Bytes:", rowGroupMeta.TotalByteSize(), " ---")
+				tmp += rowGroupMeta.TotalByteSize()
+				fmt.Println("--- Total Bytes:", tmp, " ---")
 				var selectedColumns [1]int
-				selectedColumns[0] = 0
+				selectedColumns[0] = 1
 				for range selectedColumns {
 					//chunkMeta, err := rowGroupMeta.ColumnChunk(c)
 					fmt.Println("--- Values ---")
+
+					scanners := make([]*Dumper, len(selectedColumns))
+					fields := make([]string, len(selectedColumns))
+					for idx, c := range selectedColumns {
+						col, err := rgr.Column(c)
+						if err != nil {
+							fmt.Errorf(
+								"replayAQL: could not determin content type of file %s, error: %v!\n",
+								c, err)
+							return
+						}
+						scanners[idx] = createDumper(col)
+						fields[idx] = col.Descriptor().Path()
+					}
+
+					for {
+						data := false
+						for idx, s := range scanners {
+							fmt.Sprintf("\n")
+							if val, ok := s.Next(); ok {
+								fmt.Sprintf("\n    %q: %s", fields[idx], val)
+							}
+							data = true
+						}
+						if !data {
+							break
+						}
+					}
 				}
 			}
 

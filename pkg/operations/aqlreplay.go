@@ -388,8 +388,8 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 			f.Close()
 			rdr, err := file.OpenParquetFile(rp.Input, false)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "error opening parquet file: ", err)
-				os.Exit(1)
+				fmt.Errorf("replayAQL: error opening parquet file %v \n", err)
+				return
 			}
 
 			var tmp = int64(0)
@@ -400,38 +400,88 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 				rowGroupMeta := rgr.MetaData()
 				tmp += rowGroupMeta.TotalByteSize()
 				fmt.Println("--- Total Bytes:", tmp, " ---")
-				var selectedColumns [1]int
-				selectedColumns[0] = 1
+
+				selectedColumns := []int{}
+				if len(selectedColumns) == 0 {
+					for i := 0; i < 3; i++ { // hard coded
+						selectedColumns = append(selectedColumns, i)
+					}
+				}
+
 				for range selectedColumns {
 					//chunkMeta, err := rowGroupMeta.ColumnChunk(c)
 					fmt.Println("--- Values ---")
-
 					scanners := make([]*Dumper, len(selectedColumns))
 					fields := make([]string, len(selectedColumns))
 					for idx, c := range selectedColumns {
 						col, err := rgr.Column(c)
 						if err != nil {
-							fmt.Errorf(
-								"replayAQL: could not determin content type of file %s, error: %v!\n",
-								c, err)
+							fmt.Errorf("replayAQL: unable to fetch column=%d err=%s \n", c, err)
 							return
 						}
 						scanners[idx] = createDumper(col)
 						fields[idx] = col.Descriptor().Path()
+						fmt.Println(fields[idx])
 					}
 
 					for {
+
 						data := false
+						first := true
+
+						var qj QueryJson
+						var sq SingleQuery
 						for idx, s := range scanners {
-							fmt.Sprintf("\n")
+
 							if val, ok := s.Next(); ok {
-								fmt.Sprintf("\n    %q: %s", fields[idx], val)
+
+								data = true
+								if val == nil {
+									continue
+								}
+								if !first {
+									fmt.Sprint(",")
+								}
+								first = false
+								switch val.(type) {
+								case bool, int32, int64, float32, float64:
+								default:
+									val = s.FormatValue(val, 0)
+								}
+								jsonVal, err := json.Marshal(val)
+								if err != nil {
+									fmt.Fprintf(os.Stderr, "error: marshalling json for %+v, %s\n", val, err)
+									os.Exit(1)
+								}
+								sq.Database = "gvtstatedb"
+
+								qj.Streaming = false
+								switch idx {
+								case 0:
+									sq.TimeStamp = strconv.FormatInt(val.(int64), 10)
+								case 1:
+									qj.QueryString = val.(string)
+								case 2:
+									//qj.BindVars = jsonVal
+
+									err = json.Unmarshal([]byte(val.(string)), &qj.BindVars)
+									if err != nil {
+										// Handle error
+										PrintTS(fmt.Sprintf("replayAQL: Could not parse json: %s, error: %v, skipping it...\n", string(jsonVal), err))
+										return
+									}
+								}
+								sq.Query = qj
+
+								fmt.Sprintf("\n    %q: %s", fields[idx], jsonVal)
 							}
-							data = true
 						}
+						queries <- &sq
+
 						if !data {
 							break
 						}
+						fmt.Sprint("\n  }")
 					}
 				}
 			}
@@ -460,8 +510,8 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 					queries <- &sq
 				}
 			}
-			close(queries)
 		}
+		close(queries)
 	}()
 
 	overallStartTime := time.Now()

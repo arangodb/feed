@@ -43,7 +43,7 @@ Usage:
    [flags]
 
 Flags:
-      --endpoints strings      Endpoint of server where data should be written. (default [http://localhost:8529])
+      --endpoints strings      Endpoint of server where data should be written. (default http://localhost:8529)
       --execute string         Filename of program to execute. (default "doit.feed")
   -h, --help                   help for this command
       --jsonOutputFile string  File name of JSON report on performance which is written.

@@ -317,6 +317,10 @@ func parserRecursion(lines []string, pos *int, depth int) (Program, error) {
 		return nil, fmt.Errorf("No Maker for first word %s in line %d of input in depth %d", cmd, *pos+1, depth)
 	}
 	prog, err := maker(args, *pos+1)
+  if err != nil {
+    fmt.Errorf("Error in maker: %v", err)
+    return nil, fmt.Errorf("Error in maker: %v", err)
+  }
 	st, en := prog.Lines()
 	prog.SetSource(lines[st-1 : en])
 	if err != nil {

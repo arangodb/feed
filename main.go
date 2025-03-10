@@ -38,7 +38,7 @@ func init() {
 	flags.StringVar(&config.Username, "username", "root", "User name for database access.")
 	flags.StringVar(&config.Password, "password", "", "Password for database access.")
 	flags.StringVar(&ProgName, "execute", "doit.feed", "Filename of program to execute.")
-	flags.StringVar(&config.Protocol, "protocol", "vst", "Protocol (http1, http2, vst)")
+	flags.StringVar(&config.Protocol, "protocol", "http1", "Protocol (http1, http2, vst)")
 	flags.StringVar(&config.JSONOutput, "jsonOutputFile", "feed.json", "Filename for JSON result output.")
 	flags.IntVar(&config.MetricsPort, "metricsPort", 8888, "Metrics port (0 for no metrics)")
 	flags.IntVar(&MoreWords, "moreWords", 0, "Number of additional random terms in long word list")

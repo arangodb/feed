@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strconv"
+	"time"
 )
 
 var (
@@ -204,6 +205,7 @@ type Doc struct {
 	// For edges only, the Label of the from vertex
 	FromLabel string `json:"fromId,omitempty"`
 	// For edges only, the Label of the to vertex
+
 	ToLabel  string `json:"toId,omitempty"`
 	Payload0 string `json:"payload0"`
 	Payload1 string `json:"payload1,omitempty"`
@@ -223,6 +225,9 @@ type Doc struct {
 	Payloadf string `json:"payloadf,omitempty"`
 	Geo      *Poly  `Json:"geo,omitempty"`
 	Words    string `json:"words,omitempty"`
+
+	Created int64 `json:"created,omitempty"`
+	Expired int64 `json:"expired,omitempty"`
 }
 
 // makeRandomPolygon makes a random GeoJson polygon.
@@ -318,17 +323,23 @@ type DocumentConfig struct {
 }
 
 func (doc *Doc) FillData(docConfig *DocumentConfig, source *rand.Rand) {
+	rand.Seed(time.Now().UnixNano())
+	min := 3600
+	max := 604800
+
 	if docConfig.NumberFields > 16 {
 		docConfig.NumberFields = 16
 	} else if docConfig.NumberFields < 1 {
 		docConfig.NumberFields = 1
 	}
-	payloadSize := (docConfig.SizePerDoc - docConfig.KeySize - 106 - 11*docConfig.WithWords) / docConfig.NumberFields
+	payloadSize := (docConfig.SizePerDoc - docConfig.KeySize - 106 - 11*docConfig.WithWords + 34) / docConfig.NumberFields
 	// 106 is the approximate overhead for _id, _rev and structures
 	if payloadSize < 0 {
-		payloadSize = int64(5)
+		payloadSize = int64(16)
 	}
 	doc.Payload0 = MakeRandomStringWithSpaces(int(payloadSize), source)
+	doc.Created = time.Now().Unix() - int64(rand.Intn(max-min+1)+min)
+	doc.Expired = doc.Created + 3600
 	if docConfig.WithGeo {
 		doc.Geo = makeRandomPolygon(source)
 	}

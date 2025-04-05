@@ -1,20 +1,21 @@
 package main
 
 import (
-	"fmt"
-
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/spf13/cobra"
+
+	"github.com/arangodb/feed/pkg/cli"
 	"github.com/arangodb/feed/pkg/config"
 	"github.com/arangodb/feed/pkg/datagen"
 	"github.com/arangodb/feed/pkg/feedlang"
 	"github.com/arangodb/feed/pkg/operations"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -123,5 +124,7 @@ func mainExecute(cmd *cobra.Command, _ []string) error {
 }
 
 func main() {
-	cmd.Execute()
+	if err := cli.RunCommandWithProfile(cmd); err != nil {
+		os.Exit(1)
+	}
 }

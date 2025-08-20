@@ -5,7 +5,7 @@ go 1.21
 toolchain go1.22.1
 
 require (
-	github.com/apache/arrow/go/v16 v16.0.0-20240403083331-be3b78902ff2
+	github.com/apache/arrow/go/v16 v16.0.0-20240408141505-f8784acbfcd4
 	github.com/apache/thrift v0.19.0
 	github.com/arangodb/go-driver v1.5.3-0.20230428134606-b490917a5b5d
 	github.com/fatih/color v1.15.0

@@ -1,10 +1,12 @@
+#!/usr/bin/gawk -f
+
 BEGIN {
   map["0x0"] = "nothing"   # just an example
 }
 
 /{requests}.*h.*-request-begin.*_api\/cursor/ {
     nr = split($0, x, " ")
-    s = x[7];
+    s = x[6];
     for (i = 8; i <= nr; ++i) {
         s = s " " x[i]
     }
@@ -19,8 +21,8 @@ BEGIN {
 
 /{requests}.*h.*-request-body.*query/ {
     nr = split($0, x, " ");
-    s = x[7];
-    for (i = 8; i <= nr; ++i) {
+    s = x[6];
+    for (i = 7; i <= nr; ++i) {
         s = s " " x[i];
     }
     nr = split(s, y, ",");
@@ -32,6 +34,9 @@ BEGIN {
     u = substr(t, 2, length(t)-2)
     gsub(/\\"/, "\"", u)
     gsub(/\\\\/, "\\", u)
+
+    while (match(u, /\\\/\\\/.*nn/)) {u = substr(u, 1, RSTART-1) substr(u, RSTART+RLENGTH)}
+
     print "{\"t\":\"" $1 "\", \"db\": \"" map[this] "\", \"q\":" u "}" 
     delete map[this]
 }

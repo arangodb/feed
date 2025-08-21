@@ -93,6 +93,7 @@ func (rp *ReplayAqlProg) Replay() error {
 type QueryJson struct {
 	QueryString string                 `json:"query"`
 	BindVars    map[string]interface{} `json:"bindVars"`
+	Options     map[string]interface{} `json:"options"`
 	Streaming   bool                   `json:"stream"`
 }
 
@@ -199,9 +200,24 @@ func runReplayAqlInParallel(rp *ReplayAqlProg) error {
 			start := time.Now()
 
 			ctx := context.Background()
+
+			// get query options
+			for k, v := range q.Query.Options {
+				switch k {
+				case "forceOneShardAttributeValue":
+					ctx = driver.WithQueryForceOneShardAttributeValue(ctx, v.(string))
+				case "maxRuntime":
+					ctx = driver.WithQueryMaxRuntime(ctx, v.(float64))
+				case "profile":
+					ctx = driver.WithQueryProfile(ctx, v.(int))
+				case "fullCount":
+					ctx = driver.WithQueryFullCount(ctx, v.(bool))
+				}
+			}
 			if q.Query.Streaming {
 				ctx = driver.WithQueryStream(ctx, true)
 			}
+
 			cursor, err := db.Query(ctx, q.Query.QueryString, q.Query.BindVars)
 			if err != nil {
 				PrintTS(fmt.Sprintf("Can not execute query: %v, error: %v\n", *q, err))

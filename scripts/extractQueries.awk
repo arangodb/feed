@@ -34,8 +34,9 @@ BEGIN {
     u = substr(t, 2, length(t)-2)
     gsub(/\\"/, "\"", u)
     gsub(/\\\\/, "\\", u)
-
-    while (match(u, /\\\/\\\/.*nn/)) {u = substr(u, 1, RSTART-1) substr(u, RSTART+RLENGTH)}
+    
+    #remove single line comments
+    gsub(/\\\/\\\/[^\\]*\\n/, "", u)
 
     print "{\"t\":\"" $1 "\", \"db\": \"" map[this] "\", \"q\":" u "}" 
     delete map[this]

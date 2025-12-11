@@ -144,10 +144,39 @@ func GetStringSliceValue(args map[string]string, name string) []string {
 // and the value. If keys repeat, only the last counts. The first argument
 // is special, it is returned as first result if it does not contain an =
 // sign. Otherwise, the first result is empty.
+// Bracket-enclosed values like [col1, col2, col3] are handled specially to
+// allow spaces within the brackets.
 func ParseArguments(args []string) (string, map[string]string) {
 	var subCmd string
 	res := make(map[string]string, 20)
-	for i, s := range args {
+
+	// First, join args that are part of a bracket-enclosed value
+	joinedArgs := make([]string, 0, len(args))
+	var currentArg strings.Builder
+	inBrackets := false
+
+	for _, s := range args {
+		if inBrackets {
+			currentArg.WriteString(s)
+			if strings.Contains(s, "]") {
+				inBrackets = false
+				joinedArgs = append(joinedArgs, currentArg.String())
+				currentArg.Reset()
+			}
+		} else if strings.Contains(s, "=[") && !strings.Contains(s, "]") {
+			// Start of a bracket-enclosed value that spans multiple args
+			inBrackets = true
+			currentArg.WriteString(s)
+		} else {
+			joinedArgs = append(joinedArgs, s)
+		}
+	}
+	// Handle case where brackets weren't closed
+	if currentArg.Len() > 0 {
+		joinedArgs = append(joinedArgs, currentArg.String())
+	}
+
+	for i, s := range joinedArgs {
 		ss := strings.TrimSpace(s)
 		if len(ss) != 0 { // ignore empty or white only
 			pos := strings.Index(ss, "=")

@@ -342,6 +342,18 @@ func TestParseArguments(t *testing.T) {
 			expectedSubCmd: "insert",
 			expectedMap:    map[string]string{"database": "mydb"},
 		},
+		{
+			name:           "collections array with spaces - split across args",
+			args:           []string{"insert", "database=mydb", "collections=[col1,", "col2,", "col3]"},
+			expectedSubCmd: "insert",
+			expectedMap:    map[string]string{"database": "mydb", "collections": "[col1,col2,col3]"},
+		},
+		{
+			name:           "collections array with spaces inside single arg",
+			args:           []string{"insert", "collections=[col1, col2, col3]"},
+			expectedSubCmd: "insert",
+			expectedMap:    map[string]string{"collections": "[col1, col2, col3]"},
+		},
 	}
 
 	for _, tt := range tests {

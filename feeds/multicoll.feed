@@ -1,0 +1,15 @@
+[
+# Example feed file demonstrating multi-collection insert with sizePerCollection
+# This creates 3 collections and inserts data into all of them in parallel
+
+# Create the collections first
+normal create database=xyz collection=col1 sizePerCollection=100M
+normal create database=xyz collection=col2 sizePerCollection=100M
+normal create database=xyz collection=col3 sizePerCollection=100M
+wait 5
+
+# Insert 100M of data into each collection in parallel (use K, M, G, T suffixes)
+# Each collection gets its own goroutine, and parallelism controls workers per collection
+normal insert database=xyz collections=[col1,col2,col3] sizePerCollection=100M documentSize=300 parallelism=4
+]
+

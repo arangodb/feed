@@ -101,6 +101,7 @@ type NormalProg struct {
 	// General parameters:
 	Database         string
 	Collection       string
+	Collections      []string // Multiple collections for multi-collection insert
 	View             string
 	ViewDefFile      string
 	AnalyzersDefFile string
@@ -113,10 +114,11 @@ type NormalProg struct {
 	Drop              bool
 
 	// Parameters for batch import:
-	DocConfig   datagen.DocumentConfig
-	Parallelism int64
-	StartDelay  int64
-	BatchSize   int64
+	DocConfig         datagen.DocumentConfig
+	SizePerCollection int64 // Size per collection when using multiple collections (mutually exclusive with Size)
+	Parallelism       int64
+	StartDelay        int64
+	BatchSize         int64
 
 	// Parameters for random:
 	LoadPerThread int64
@@ -221,6 +223,7 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 	return &NormalProg{
 		Database:          GetStringValue(m, "database", "_system"),
 		Collection:        GetStringValue(m, "collection", "batchimport"),
+		Collections:       GetStringSliceValue(m, "collections"),
 		View:              GetStringValue(m, "view", "v"),
 		ViewDefFile:       GetStringValue(m, "viewDefFile", "view.json"),
 		AnalyzersDefFile:  GetStringValue(m, "analyzersDefFile", ""),
@@ -237,6 +240,7 @@ func parseNormalArgs(subCmd string, m map[string]string) *NormalProg {
 			KeySize:      GetInt64Value(m, "keySize", 32),
 			NumberFields: GetInt64Value(m, "numberFields", 1),
 		},
+		SizePerCollection:  GetInt64Value(m, "sizePerCollection", 0),
 
 		Parallelism:        GetInt64Value(m, "parallelism", 16),
 		StartDelay:         GetInt64Value(m, "startDelay", 5),
@@ -264,6 +268,25 @@ func NewNormalProg(args []string, line int) (feedlang.Program, error) {
 	if _, hasKey := normalSubprograms[np.SubCommand]; !hasKey {
 		return nil, fmt.Errorf("Unknown subcommand %s", np.SubCommand)
 	}
+
+	// Validate mutual exclusivity of size and sizePerCollection for insert
+	if np.SubCommand == "insert" {
+		_, hasSize := m["size"]
+		_, hasSizePerCollection := m["sizePerCollection"]
+
+		if hasSize && hasSizePerCollection {
+			return nil, fmt.Errorf("size and sizePerCollection are mutually exclusive, specify only one")
+		}
+
+		if hasSizePerCollection && len(np.Collections) == 0 {
+			return nil, fmt.Errorf("sizePerCollection requires collections to be specified")
+		}
+
+		if len(np.Collections) > 0 && !hasSizePerCollection {
+			return nil, fmt.Errorf("when using collections, sizePerCollection must be specified instead of size")
+		}
+	}
+
 	np.Stats.StartLine = line
 	np.Stats.EndLine = line
 	np.Stats.Type = "normal (" + subCmd + ")"
@@ -654,6 +677,11 @@ func (np *NormalProg) Insert() error {
 		np.DocConfig.KeySize = 64
 	}
 
+	// If multiple collections are specified, use multi-collection insert
+	if len(np.Collections) > 0 {
+		return np.InsertMultiCollection()
+	}
+
 	// Number of batches to put into the collection:
 	number := (np.DocConfig.Size / np.DocConfig.SizePerDoc) / np.BatchSize
 
@@ -664,6 +692,246 @@ func (np *NormalProg) Insert() error {
 		return fmt.Errorf("can not do some batch imports")
 	}
 
+	return nil
+}
+
+// InsertMultiCollection handles insertion into multiple collections in parallel.
+// Each collection gets its own goroutine, and within each collection, the parallelism
+// is used to split the work further.
+func (np *NormalProg) InsertMultiCollection() error {
+	numCollections := len(np.Collections)
+	// Number of batches per collection
+	batchesPerCollection := (np.SizePerCollection / np.DocConfig.SizePerDoc) / np.BatchSize
+
+	Print("\n")
+	PrintTS(fmt.Sprintf("normal: Will write %d batches of %d docs to each of %d collections (total %d batches)... (line %d of script)\n",
+		batchesPerCollection, np.BatchSize, numCollections, batchesPerCollection*int64(numCollections), np.Stats.StartLine))
+
+	if err := writeSomeBatchesParallelMultiCollection(np, batchesPerCollection); err != nil {
+		return fmt.Errorf("can not do multi-collection batch imports: %v", err)
+	}
+
+	return nil
+}
+
+// writeSomeBatchesParallelMultiCollection spawns a goroutine for each collection,
+// and each collection goroutine runs parallel workers to insert batches.
+func writeSomeBatchesParallelMultiCollection(np *NormalProg, batchesPerCollection int64) error {
+	numCollections := len(np.Collections)
+	totaltimestart := time.Now()
+	wg := sync.WaitGroup{}
+	collectionErrors := make([]error, numCollections)
+	collectionStats := make([][]NormalStatsOneThread, numCollections)
+
+	for collIdx, collName := range np.Collections {
+		collIdx := collIdx
+		collName := collName
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			PrintTS(fmt.Sprintf("normal: Starting insert goroutine for collection %s...\n", collName))
+
+			// Each collection gets its own set of parallel workers
+			err := RunParallel(np.Parallelism, np.StartDelay, fmt.Sprintf("writeSomeBatches-%s", collName), func(id int64) error {
+				nrBatches := batchesPerCollection / np.Parallelism
+
+				// Let's use our own private client and connection here:
+				cl, err := config.MakeClient()
+				if err != nil {
+					return fmt.Errorf("Can not make client: %v", err)
+				}
+				db, err := cl.Database(context.Background(), np.Database)
+				if err != nil {
+					return fmt.Errorf("Can not get database: %s", np.Database)
+				}
+
+				insertCollection, err := db.Collection(nil, collName)
+				if err != nil {
+					PrintTS(fmt.Sprintf("writeSomeBatches: could not open `%s` collection: %v\n", collName, err))
+					return err
+				}
+
+				docs := make([]datagen.Doc, 0, np.BatchSize)
+				times := make([]time.Duration, 0, np.BatchSize)
+				cyclestart := time.Now()
+				last100start := cyclestart
+
+				// It is crucial that every go routine has its own random source, otherwise
+				// we create a lot of contention. Use collIdx to differentiate between collections.
+				source := rand.New(rand.NewSource(int64(collIdx)*1000000 + int64(id) + rand.Int63()))
+
+				for i := int64(1); i <= nrBatches; i++ {
+					start := time.Now()
+					for j := int64(1); j <= np.BatchSize; j++ {
+						var doc datagen.Doc
+						// Include collIdx in key generation to avoid conflicts across collections
+						doc.ShaKey(int64(collIdx)*1000000000000+(id*nrBatches+i-1)*np.BatchSize+j-1, int(np.DocConfig.KeySize))
+						doc.FillData(&np.DocConfig, source)
+						if np.AddFromTo {
+							if np.Smart {
+								smartF := datagen.MakeRandomString(2, source)
+								smartT := datagen.MakeRandomString(2, source)
+								doc.From = np.VertexCollName + "/" + smartF + ":" + datagen.MakeRandomString(8, source)
+								doc.To = np.VertexCollName + "/" + smartT + ":" + datagen.MakeRandomString(8, source)
+								doc.Key = smartF + ":" + doc.Key + ":" + smartT
+							} else {
+								doc.From = np.VertexCollName + "/" + datagen.MakeRandomString(8, source)
+								doc.To = np.VertexCollName + "/" + datagen.MakeRandomString(8, source)
+							}
+						}
+						docs = append(docs, doc)
+					}
+					ctx, cancel := context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
+
+					var err error
+					if np.UseAql && np.AddFromTo {
+						cancel()
+						return fmt.Errorf("currently it is not supported to set useAql and addFromTo to `true` at the same time")
+					}
+					if np.UseAql {
+						query := "FOR d IN @docs INSERT d INTO " + insertCollection.Name()
+						bindVars := map[string]interface{}{
+							"docs": docs,
+						}
+						var cursor driver.Cursor
+						cursor, err = db.Query(ctx, query, bindVars)
+						if cursor != nil {
+							cursor.Close()
+						}
+					} else {
+						_, _, err = insertCollection.CreateDocuments(ctx, docs)
+					}
+
+					cancel()
+					if err != nil {
+						PrintTS(fmt.Sprintf("writeSomeBatches: could not write batch to %s: %v, id: %d", collName, err, id))
+						if np.Retries == 0 {
+							return err
+						}
+						var retryNum int64 = 1
+						for retryNum <= np.Retries {
+							if config.Verbose {
+								PrintTS(fmt.Sprintf("normal: %s Need retry for collection %s id %d: %d of %d.\n", time.Now(), collName, id, retryNum, np.Retries))
+							}
+							ctx, cancel = context.WithTimeout(driver.WithOverwriteMode(context.Background(), driver.OverwriteModeIgnore), time.Duration(np.Timeout)*time.Second)
+							if np.UseAql {
+								query := "FOR d IN @docs INSERT d INTO " + insertCollection.Name()
+								bindVars := map[string]interface{}{
+									"docs": docs,
+								}
+								var cursor driver.Cursor
+								cursor, err = db.Query(ctx, query, bindVars)
+								if cursor != nil {
+									cursor.Close()
+								}
+							} else {
+								_, _, err = insertCollection.CreateDocuments(ctx, docs)
+							}
+
+							cancel()
+							if err == nil {
+								if config.Verbose {
+									PrintTS(fmt.Sprintf("writeSomeBatches: retry %d of %d was successful for collection %s, id: %d", retryNum, np.Retries, collName, id))
+								}
+								break
+							}
+							PrintTS(fmt.Sprintf("writeSomeBatches: could not write batch to %s: %v, id: %d, retry %d of %d", collName, err, id, retryNum, np.Retries))
+							retryNum += 1
+						}
+						if err != nil {
+							return err
+						}
+					}
+					metrics.DocumentsInserted.Add(float64(np.BatchSize))
+					metrics.BatchesInserted.Inc()
+					docs = docs[0:0]
+					times = append(times, time.Now().Sub(start))
+					if i%100 == 0 {
+						dur := float64(time.Now().Sub(last100start)) / float64(time.Second)
+						last100start = time.Now()
+
+						// Intermediate report:
+						if config.Verbose {
+							PrintTS(fmt.Sprintf("normal: %s Have imported %d batches to %s for id %d, last 100 took %f seconds.\n", time.Now(), int(i), collName, id, dur))
+						}
+					}
+				}
+
+				totaltime := time.Now().Sub(cyclestart)
+				nrDocs := np.BatchSize * nrBatches
+				docspersec := float64(nrDocs) / (float64(totaltime) / float64(time.Second))
+				stats := NormalStatsOneThread{
+					TotalTime:    totaltime,
+					NumberOps:    nrDocs,
+					OpsPerSecond: docspersec,
+				}
+				stats.FillInStats(times)
+				PrintStatistics(&stats, fmt.Sprintf("normal (insert to %s):\n  Times for inserting %d batches (line %d of script).\n  docs per second in this go routine: %f", collName, nrBatches, np.Stats.StartLine, docspersec))
+
+				// Report back:
+				np.Stats.Mutex.Lock()
+				collectionStats[collIdx] = append(collectionStats[collIdx], stats)
+				np.Stats.Mutex.Unlock()
+
+				return nil
+			}, func(totaltime time.Duration, haveError bool) error {
+				// Per-collection report
+				batchesPerSec := float64(batchesPerCollection) / (float64(totaltime) / float64(time.Second))
+				docspersec := float64(batchesPerCollection*np.BatchSize) / (float64(totaltime) / float64(time.Second))
+
+				msg := fmt.Sprintf("normal (insert to %s):\n  Total documents written to collection: %d,\n  batches per second: %f,\n  docs per second: %f,\n  with errors: %v",
+					collName, batchesPerCollection*np.BatchSize, batchesPerSec, docspersec, haveError)
+				PrintTS(msg)
+
+				return nil
+			})
+
+			if err != nil {
+				collectionErrors[collIdx] = err
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	totaltimeend := time.Now()
+	totaltime := totaltimeend.Sub(totaltimestart)
+
+	// Aggregate stats from all collections
+	var allStats []NormalStatsOneThread
+	for _, stats := range collectionStats {
+		allStats = append(allStats, stats...)
+	}
+
+	np.Stats.Overall = AggregateStats(allStats, totaltime)
+	np.Stats.Overall.TotalTime = totaltime
+	np.Stats.Threads = allStats
+
+	// Check for errors
+	haveError := false
+	for _, err := range collectionErrors {
+		if err != nil {
+			haveError = true
+			PrintTS(fmt.Sprintf("Error in multi-collection insert: %v", err))
+		}
+	}
+	np.Stats.Overall.HaveError = haveError
+
+	totalDocs := batchesPerCollection * np.BatchSize * int64(numCollections)
+	totalBatches := batchesPerCollection * int64(numCollections)
+	batchesPerSec := float64(totalBatches) / (float64(totaltime) / float64(time.Second))
+	docspersec := float64(totalDocs) / (float64(totaltime) / float64(time.Second))
+
+	msg := fmt.Sprintf("normal (multi-collection insert):\n  Total documents written across %d collections: %d,\n  total batches per second: %f,\n  total docs per second: %f,\n  with errors: %v",
+		numCollections, totalDocs, batchesPerSec, docspersec, haveError)
+	statsmsg := np.Stats.Overall.StatsToStrings()
+	PrintTSs(msg, statsmsg)
+
+	if haveError {
+		return fmt.Errorf("errors occurred during multi-collection insert")
+	}
 	return nil
 }
 

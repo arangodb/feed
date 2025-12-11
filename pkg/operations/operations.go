@@ -59,7 +59,7 @@ func CheckInt64Parameter(value *int64, name string, input string) error {
 }
 
 // GetInt64Value is used to work on parsed user input from the program and
-// extract an integer parameter value.
+// extract an integer parameter value. Supports suffixes: K, M, G, T.
 func GetInt64Value(args map[string]string, name string, def int64) int64 {
 	input, ok := args[name]
 	if !ok {
@@ -108,6 +108,33 @@ func GetBoolValue(args map[string]string, name string, def bool) bool {
 	}
 	return len(input) > 0 && (input[0] == 't' || input[0] == 'T' ||
 		input[0] == '1' || input[0] == 'y' || input[0] == 'Y')
+}
+
+// GetStringSliceValue is used to parse array-like syntax [val1,val2,val3] from arguments.
+// Returns nil if the key is not present, or an empty slice if the value is empty [].
+func GetStringSliceValue(args map[string]string, name string) []string {
+	input, ok := args[name]
+	if !ok {
+		return nil
+	}
+	// Remove surrounding brackets if present
+	input = strings.TrimSpace(input)
+	if len(input) >= 2 && input[0] == '[' && input[len(input)-1] == ']' {
+		input = input[1 : len(input)-1]
+	}
+	if input == "" {
+		return []string{}
+	}
+	// Split by comma and trim each element
+	parts := strings.Split(input, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 // ParseArguments parses an argument list []string and returns a

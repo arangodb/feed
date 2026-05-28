@@ -1,6 +1,6 @@
 module github.com/arangodb/feed
 
-go 1.19
+go 1.23.0
 
 require (
 	github.com/arangodb/go-driver v1.5.3-0.20230428134606-b490917a5b5d
@@ -8,7 +8,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v0.9.3
 	github.com/spf13/cobra v1.1.3
-	golang.org/x/net v0.7.0
+	golang.org/x/net v0.38.0
 )
 
 require (
@@ -24,6 +24,6 @@ require (
 	github.com/prometheus/procfs v0.0.0-20190507164030-5867b95ac084 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
-	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 )

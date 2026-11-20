@@ -209,7 +209,7 @@ func (n *NormalProg) StatsJSON() interface{} {
 
 var (
 	normalSubprograms = map[string]struct{}{"create": {}, "insert": {},
-		"randomRead": {}, "randomUpdate": {}, "randomReplace": {},
+		"randomRead": {}, "randomBatchRead": {}, "randomUpdate": {}, "randomReplace": {},
 		"createIdx": {}, "dropIdx": {}, "queryOnIdx": {}, "drop": {},
 		"truncate": {}, "dropDatabase": {}, "createView": {}, "dropView": {},
 		"nastyViewData": {},
@@ -1390,6 +1390,113 @@ func readRandomlyInParallel(np *NormalProg) error {
 	return nil
 }
 
+func (np *NormalProg) RandomBatchRead() error {
+	Print("\n")
+	PrintTS(fmt.Sprintf("\nnormal: Will perform random batch reads of %d documents each.\n\n", np.BatchSize))
+
+	if err := readBatchesRandomlyInParallel(np); err != nil {
+		return fmt.Errorf("can not read batches randomly")
+	}
+
+	return nil
+}
+
+// readBatchesRandomlyInParallel reads loadPerThread batches of batchSize
+// random documents per go routine, each batch with one request (PUT
+// /_api/document/<collection>?onlyget=true), so whatever a request costs is
+// spread over the batch. Like insert, the stats count documents, with one
+// time per batch.
+func readBatchesRandomlyInParallel(np *NormalProg) error {
+	err := RunParallel(np.Parallelism, np.StartDelay, "randomBatchRead", func(id int64) error {
+		// Let's use our own private client and connection here:
+		cl, err := config.MakeClient()
+		if err != nil {
+			return fmt.Errorf("randomBatchRead: Can not make client: %v", err)
+		}
+		db, err := cl.Database(context.Background(), np.Database)
+		if err != nil {
+			return fmt.Errorf("randomBatchRead: Can not get database: %s", np.Database)
+		}
+
+		coll, err := db.Collection(nil, np.Collection)
+		if err != nil {
+			PrintTS(fmt.Sprintf("randomBatchRead: could not open `%s` collection: %v\n", np.Collection, err))
+			return err
+		}
+
+		ctx := context.Background()
+		colSize, err := coll.Count(ctx)
+		if err != nil {
+			PrintTS(fmt.Sprintf("randomBatchRead: could not count num of docs for `%s` collection: %v\n", np.Collection, err))
+			return err
+		}
+		batchSize := np.BatchSize
+		if batchSize > colSize {
+			batchSize = colSize
+		}
+
+		// It is crucial that every go routine has its own random source, otherwise
+		// we create a lot of contention.
+		source := rand.New(rand.NewSource(int64(id) + rand.Int63()))
+
+		keys := make([]string, batchSize)
+		docs := make([]datagen.Doc, batchSize)
+		times := make([]time.Duration, 0, np.LoadPerThread)
+		cyclestart := time.Now()
+		for i := int64(1); i <= np.LoadPerThread; i++ {
+			for j := range keys {
+				var doc datagen.Doc
+				doc.ShaKey(source.Int63n(colSize), int(np.DocConfig.KeySize))
+				keys[j] = doc.Key
+			}
+
+			start := time.Now()
+			_, errs, err := coll.ReadDocuments(ctx, keys, docs)
+			if err == nil {
+				err = errs.FirstNonNil()
+			}
+			if err != nil {
+				return fmt.Errorf("Can not read batch of %d documents: %v\n", batchSize, err)
+			}
+			metrics.DocumentsRead.Add(float64(batchSize))
+			metrics.BatchesRead.Inc()
+			times = append(times, time.Now().Sub(start))
+		}
+		totaltime := time.Now().Sub(cyclestart)
+		nrDocs := np.LoadPerThread * batchSize
+		docspersec := float64(nrDocs) / (float64(totaltime) / float64(time.Second))
+		stats := NormalStatsOneThread{
+			TotalTime:    totaltime,
+			NumberOps:    nrDocs,
+			OpsPerSecond: docspersec,
+		}
+		stats.FillInStats(times)
+		PrintStatistics(&stats, fmt.Sprintf("normal (randomBatchRead):\n  Times for reading %d batches of %d documents (line %d of script).\n  docs per second in this go routine: %f", np.LoadPerThread, batchSize, np.Stats.StartLine, docspersec))
+
+		// Report back:
+		np.Stats.Mutex.Lock()
+		np.Stats.Threads = append(np.Stats.Threads, stats)
+		np.Stats.Mutex.Unlock()
+		return nil
+	}, func(totaltime time.Duration, haveError bool) error {
+		// Here, we aggregate the data from all threads and report for the
+		// whole command:
+		np.Stats.Overall = AggregateStats(np.Stats.Threads, totaltime)
+		np.Stats.Overall.TotalTime = totaltime
+		np.Stats.Overall.HaveError = haveError
+		batchespersec := float64(np.Parallelism*np.LoadPerThread) / (float64(totaltime) / float64(time.Second))
+		msg := fmt.Sprintf("normal (randomBatchRead):\n  Total number of batches read: %d of up to %d documents each (line %d of script),\n  total batches per second: %f,\n  with errors: %v", np.Parallelism*np.LoadPerThread, np.BatchSize, np.Stats.StartLine, batchespersec, haveError)
+		statsmsg := np.Stats.Overall.StatsToStrings()
+		PrintTSs(msg, statsmsg)
+		return nil
+	},
+	)
+	if err != nil {
+		return fmt.Errorf("randomBatchRead: can not read batches randomly in parallel: %v", err)
+	}
+	return nil
+}
+
 // writeSomeBatchesParallel does some batch imports in parallel
 func writeSomeBatchesParallel(np *NormalProg, number int64) error {
 	err := RunParallel(np.Parallelism, np.StartDelay, "writeSomeBatches", func(id int64) error {
@@ -1584,6 +1691,8 @@ func (np *NormalProg) Execute() error {
 		err = np.Insert()
 	case "randomRead":
 		err = np.RandomRead()
+	case "randomBatchRead":
+		err = np.RandomBatchRead()
 	case "randomUpdate":
 		err = np.RandomUpdate()
 	case "randomReplace":

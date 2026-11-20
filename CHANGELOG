@@ -3,6 +3,10 @@ Version 0.9.3
  - Set default for --protocol to http1
  - Better error handling
  - Typo in README
+ - Add 'randomBatchRead' subcommand for 'normal': one request per batch of
+   random documents.
+ - Document that Go's default garbage collection pacing caps feed's
+   throughput; run it with GOGC=off and GOMEMLIMIT, or GOGC=1600.
 
 Version 0.9.2
 

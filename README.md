@@ -56,6 +56,25 @@ Flags:
 ```
 
 
+## Go garbage collection and throughput
+
+Go's default garbage collection setting `GOGC=100` runs the garbage 
+collection every time the heap-size increases by 100%. Because `feed` 
+keeps almost nothing on its heap but allocates a lot per request, 
+this default setting makes the garbage collector run more than a
+thousand times per second under a read load and `feed` reaches only a
+fraction of the request rate it manages otherwise. 
+The symptom looks like the server being slow or warming up, with `feed`
+itself using a lot of CPU. Set the collector's pacing through the
+environment before trusting any throughput number:
+
+```
+GOGC=off GOMEMLIMIT=4GiB ./feed --execute doit.feed
+```
+With `GOGC=off` the collector runs only when the heap nears `GOMEMLIMIT`,
+so the limit must be large compared with what `feed` allocates per second,
+and `feed`'s memory grows to that limit. 
+
 ## Misc cases
 
  - `wait`: A no-op waiting program.
@@ -83,6 +102,8 @@ subcommand.
  - `createIdx`: create an index
  - `dropIdx`: drop an index
  - `randomRead`: read documents randomly in parallel
+ - `randomBatchRead`: read batches of random documents in parallel, one
+   request per batch
  - `randomUpdate`: perform updates in documents randomly in parallel
  - `randomReplace`: perform replacements of documents in parallel
  - `dropDatabase`: drop a database
@@ -386,6 +407,33 @@ Possible parameters for usage:
    (default: `16`)
  - `loadPerThread`: number of times each thread executes random reads
    (default: `50`)
+
+
+## Subcommand `randomBatchRead` (for `normal`)
+
+Reads batches of random documents in parallel. Each batch is one request
+(`PUT /_api/document/<collection>?onlyget=true` with the keys of the
+batch), so whatever the server spends per request, such as authentication
+and permission checks, is paid once per batch instead of once per
+document. Compare with `randomRead` at the same `parallelism` to see that
+per-request cost. The statistics count documents, like those of `insert`,
+with one latency sample per batch.
+
+Example of usage:
+
+`normal randomBatchRead database=xyz collection=c parallelism=10 loadPerThread=50 batchSize=100`
+
+Possible parameters for usage:
+
+ - `database`: name of the database where the batch reads will be
+   executed (default: `_system`)
+ - `collection`: name of the collection where the batch reads will be
+   executed (default: `batchimport`)
+ - `parallelism`: number of threads to execute the batch reads
+   concurrently (default: `16`)
+ - `loadPerThread`: number of batches each thread reads (default: `50`)
+ - `batchSize`: number of random documents per batch, capped at the
+   number of documents in the collection (default: `1000`)
 
 
 ## Subcommand `randomUpdate` (for `normal`)
